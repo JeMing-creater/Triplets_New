@@ -6,7 +6,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset, ConcatDataset, DataLoader
 
 
-class CholecT50():
+class CholecT45():
     def __init__(self,
                  dataset_dir,
                  dataset_variant="cholect45-crossval",
@@ -189,7 +189,7 @@ class T50(Dataset):
 
 
 def give_dataset(config):
-    dataset = CholecT50( 
+    dataset = CholecT45( 
             dataset_dir=config.data_dir, 
             dataset_variant=config.dataset_variant,
             test_fold=config.kfold,
@@ -223,7 +223,7 @@ if __name__ == '__main__':
     
     train_loader, val_loader, test_loader = give_dataset(config.dataset)
     
-    dataset = CholecT50( 
+    dataset = CholecT45( 
             dataset_dir=data_dir, 
             dataset_variant=dataset_variant,
             test_fold=kfold,
