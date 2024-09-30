@@ -34,6 +34,9 @@ torchrun \
 ```
 user can change ```--nproc_per_node``` to needed numbers of GPUS, while the ```export CUDA_VISIBLE_DEVICES``` is needed to record the index of GPUs（from 0 ==> max）
 
+#### Dataset tasks
+user can change tasks for different dataset tasks by changing the param ```trainer.dataset``` in ```config,yml```. Especially, this choose can just set ```T45``` and ```T50```.
+
 #### tips: user can change setting of mutliple GPUs in run.sh. For now, mutliple GPUs training utilizes 2 GPUs as training device, the first two devices are used by default.
 
 ## tensorboard

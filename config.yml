@@ -1,7 +1,7 @@
 trainer:
+  dataset: T45
   is_train: True
   num_epochs: 100
-  # lr: [0.01, 0.01, 0.01]
   lr: [0.1, 0.1, 0.1]
   sf: [0.1, 0.1, 0.1]
   g: [0.94, 0.95, 0.99]
@@ -24,14 +24,27 @@ finetune:
   # checkpoint: RIT
 
 dataset:
-  batch_size: 32
-  class_num: 100
-  num_workers: 4
-  kfold: 1
-  data_dir: '/root/.cache/huggingface/forget/datasets/CholecT45/'
-  dataset_variant: 'cholect45-crossval'
-  pin_memory: True
-  persistent_workers: True
-  drop_last: False
-  weight_randa: True
-  data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+  T45:
+    batch_size: 32
+    class_num: 100
+    num_workers: 4
+    kfold: 1
+    data_dir: '/root/.cache/huggingface/forget/datasets/CholecT45/'
+    dataset_variant: 'cholect45-crossval'
+    pin_memory: True
+    persistent_workers: True
+    drop_last: False
+    weight_randa: True
+    data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+  T50:
+    batch_size: 32
+    class_num: 100
+    num_workers: 4
+    kfold: 1
+    data_dir: '/root/.cache/huggingface/forget/datasets/CholecT50/'
+    m: 3
+    weight_randa: False
+    data_augmentations: ['rot90', 'hflip', 'contrast', 'original']
+    dataset_variant: 'cholect45-crossval'
+  
+    

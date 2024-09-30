@@ -153,6 +153,11 @@ def get_world_size(accelerator):
     return accelerator.num_processes
 
 def get_weight_balancing(config):
+    dataset_choose = config.trainer.dataset
+    if dataset_choose == 'T45':
+        config = config.dataset.T45
+    elif dataset_choose == 'T50':
+        config = config.dataset.T50
     # 50:   cholecT50, data splits as used in rendezvous paper
     # 50ch: cholecT50, data splits as used in CholecTriplet challenge
     # 45cv: cholecT45, official data splits (cross-val)

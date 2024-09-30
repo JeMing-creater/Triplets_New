@@ -2,7 +2,12 @@ import ivtmetrics
 
 def val(config, model, dataloader, activation, step=0, train=False):
     model.eval()
-    rec = ivtmetrics.Recognition(config.dataset.class_num)
+    data_choose = config.trainer.dataset
+    if data_choose == 'T45':
+        class_num = config.dataset.T45.class_num
+    elif data_choose == 'T50':
+        class_num = config.dataset.T50.class_num
+    rec = ivtmetrics.Recognition(class_num)
     rec.reset_global()
     
     if train == False:
@@ -11,8 +16,15 @@ def val(config, model, dataloader, activation, step=0, train=False):
         data_set = 'Train'
     
     for _, (img, (_, _, _, y)) in enumerate(dataloader):
+        if config.trainer.dataset == 'T50':
+            b, m, c, h, w = img.size()
+            img = img.view(-1, c, h, w)
         _, _, _, triplet = model(img)
+        
         logit_ivt  = triplet  
+        if config.trainer.dataset == 'T50':
+            logit_ivt = logit_ivt.view(b, m, -1)[:, -1, :]
+            
         preds = activation(logit_ivt).detach().cpu()
 
         rec.update(y.float().detach().cpu(), preds)

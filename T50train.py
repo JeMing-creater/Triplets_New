@@ -32,11 +32,22 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizers, sch
     model.train()
     for batch, (img, (y1, y2, y3, y4)) in enumerate(train_loader):
         # output 4 result
+        if config.trainer.dataset == 'T50':
+            b, m, c, h, w = img.size()
+            img = img.view(-1, c, h, w)
+        
         tool, verb, target, triplet = model(img)
         _, logit_i  = tool
         _, logit_v  = verb
         _, logit_t  = target
-        logit_ivt   = triplet                
+        logit_ivt   = triplet
+        
+        if config.trainer.dataset == 'T50':
+            logit_i   = logit_i.view(b, m, -1)[:, -1, :]
+            logit_v   = logit_v.view(b, m, -1)[:, -1, :]
+            logit_t   = logit_t.view(b, m, -1)[:, -1, :]
+            logit_ivt = logit_ivt.view(b, m, -1)[:, -1, :]
+                        
         loss_i      = loss_functions['loss_fn_i'](logit_i, y1.float())
         loss_v      = loss_functions['loss_fn_v'](logit_v, y2.float())
         loss_t      = loss_functions['loss_fn_t'](logit_t, y3.float())
@@ -160,9 +171,9 @@ if __name__ == '__main__':
     
     # resume
     if config.trainer.resume.train:
-        model, optimizers, schedulers, start_num_epochs, train_step, val_step, best_score, best_metrics = resume_train_state(model, config.finetune.checkpoint, optimizers, schedulers, accelerator)
+        model, optimizers, schedulers, start_num_epochs, train_step, val_step, best_score, best_metrics = resume_train_state(model, config.finetune.checkpoint + config.trainer.dataset, optimizers, schedulers, accelerator)
     if config.trainer.resume.test:
-        model = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint}/best/new/pytorch_model.bin", model, accelerator)
+        model = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/pytorch_model.bin", model, accelerator)
     
     # load in accelerator
     optimizers = set_param_in_device(accelerator, optimizers)
@@ -182,19 +193,19 @@ if __name__ == '__main__':
                 best_score = score
                 best_metrics = metrics
                 # two types of modeling saving
-                accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint}/best/new/")
-                torch.save(model.state_dict(), f"{os.getcwd()}/model_store/{config.finetune.checkpoint}/best/new/model.pth")
+                accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/")
+                torch.save(model.state_dict(), f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/model.pth")
                 torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
-                        f'{os.getcwd()}/model_store/{config.finetune.checkpoint}/best/epoch.pth.tar')
+                        f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/epoch.pth.tar')
                 
             # print best score
             accelerator.print(f'Now best APscore: {best_score}', flush=True)
             
             # checkout
             accelerator.print('Checkout....')
-            accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint}/checkpoint")
+            accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint")
             torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
-                        f'{os.getcwd()}/model_store/{config.finetune.checkpoint}/checkpoint/epoch.pth.tar')
+                        f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint/epoch.pth.tar')
             accelerator.print('Checkout Over!')
     
     # val
