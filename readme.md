@@ -7,7 +7,7 @@
 
 ## get project
 ```
-git clone https://github.com/JeMing-creater/Triplets.git
+git clone https://github.com/JeMing-creater/Triplets_New.git
 ```
 
 ## training
