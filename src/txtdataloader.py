@@ -5,17 +5,15 @@ import torch
 from PIL import Image
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, ConcatDataset, DataLoader
-from transformers import BertTokenizer, BertModel, MobileBertTokenizer, MobileBertModel,BertForMaskedLM
-
-# 初始化BERT tokenizer
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+from transformers import AutoTokenizer, BertTokenizer, BertModel, MobileBertTokenizer, MobileBertModel,BertForMaskedLM
 
 
 class CholecT50():
     def __init__(self,
                  dataset_dir,
+                 tokenizer, 
                  dataset_variant="cholect45-crossval",
-                 test_fold=1,
+                 test_fold=1, text_path='text-data',
                  augmentation_list=['original', 'vflip', 'hflip', 'contrast', 'rot90']):
         """ Args
                 dataset_dir : common path to the dataset (excluding videos, output)
@@ -28,6 +26,8 @@ class CholecT50():
             Return
                 tuple ((image), (tool_label, verb_label, target_label, triplet_label))
         """
+        self.tokenizer = tokenizer
+        self.text_path = text_path
         self.dataset_dir = dataset_dir
         self.list_dataset_variant = {
             "cholect45-crossval": "for CholecT45 dataset variant with the official cross-validation splits.",
@@ -48,6 +48,9 @@ class CholecT50():
             train_videos = train_videos[:-5]
         else:
             val_videos = video_split['val']
+        self.instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator'] 
+        self.target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'othertarget']       
+        self.verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'others']      
         self.train_records = ['VID{}'.format(str(v).zfill(2)) for v in train_videos]
         self.val_records = ['VID{}'.format(str(v).zfill(2)) for v in val_videos]
         self.test_records = ['VID{}'.format(str(v).zfill(2)) for v in test_videos]
@@ -169,7 +172,7 @@ class CholecT50():
         - category (str): 类别，'instrument', 'target', 或 'verb'。
         - label (str): 标签， 'grasper', 'hook', 'action' 等。
         """
-        text_folder = os.path.join("text-data", category)
+        text_folder = os.path.join(self.text_path, category)
         text_file = os.path.join(text_folder, f"{label}.txt")
 
         if not os.path.exists(text_file):
@@ -179,11 +182,12 @@ class CholecT50():
         with open(text_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
-            if len(lines) < 20:
+            # TODO: 换成 20
+            if len(lines) < 10:
                 raise ValueError(f"{text_file} does not have 20 sentences.")
 
             # 从前 20 句中随机选择一句
-            random_sentence = random.choice(lines[:20])
+            random_sentence = random.choice(lines[:10])
 
         return random_sentence.strip()
 
@@ -211,8 +215,8 @@ class CholecT50():
             if input_text[word_num] == '[CLS]':
                 cls_num += 1
 
-            # 将句子转为id
-        indexed_tokens = tokenizer.convert_tokens_to_ids(input_text)
+        # 将句子转为id   
+        indexed_tokens = self.tokenizer.convert_tokens_to_ids(input_text)
 
         # 使用 max_len 参数进行填充和截断
         if len(indexed_tokens) < max_len:
@@ -237,12 +241,18 @@ class T50(Dataset):
         self.tool_labels = np.loadtxt(tool_file, dtype=int, delimiter=',')
         self.verb_labels = np.loadtxt(verb_file, dtype=int, delimiter=',')
         self.target_labels = np.loadtxt(target_file, dtype=int, delimiter=',')
+        
         self.img_dir = img_dir
         self.transform = transform
         self.target_transform = target_transform
         self.apply_mask_func = apply_mask_func  # 保存mask函数
         self.get_sentence_func = get_sentence_func  # 保存获取句子的函数
-
+        # TODO：确定元素是否按顺序排列
+        self.instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator'] 
+        self.target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'othertarget']       
+        self.verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'others']      
+      
+        
     def __len__(self):
         return len(self.triplet_labels)
 
@@ -268,9 +278,10 @@ class T50(Dataset):
             image = Image.new('RGB', (256, 448), color=(255, 255, 255))  # Use a blank image as a placeholder
 
         # 获取对应的文本
-        instrument_sentence = self.get_sentence_func('instrument', tool_label[0])
-        target_sentence = self.get_sentence_func('target', target_label[0])
-        verb_sentence = self.get_sentence_func('verb', verb_label[0])
+        # TODO: 看情况，如果文本标题是数字，就不用self.instrument_list等，但如果文本标题是文本，就确认一下这些个列表的元素顺序是否对应具体分类名字。
+        instrument_sentence = self.get_sentence_func('instrument', self.instrument_list[np.argmax(tool_label)])
+        target_sentence = self.get_sentence_func('target', self.target_list[np.argmax(target_label)])
+        verb_sentence = self.get_sentence_func('verb', self.verb_list[np.argmax(verb_label)])
 
         # 对文本进行mask并转换为tensor
         txt_tensor = self.apply_mask_func(instrument_sentence, target_sentence, verb_sentence)
@@ -278,12 +289,14 @@ class T50(Dataset):
         return image, txt_tensor, (tool_label, verb_label, target_label, triplet_label)
 
 
-def give_dataset(config):
+def give_dataset(config, tokenizer):
     dataset = CholecT50( 
             dataset_dir=config.data_dir, 
             dataset_variant=config.dataset_variant,
             test_fold=config.kfold,
+            text_path = config.text_path,
             augmentation_list=config.data_augmentations,
+            tokenizer = tokenizer
             )
     train_dataset, val_dataset, test_dataset = dataset.build()
     train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, prefetch_factor=3*config.batch_size, num_workers=config.num_workers, pin_memory=config.pin_memory, persistent_workers=config.persistent_workers, drop_last=config.drop_last)
@@ -302,24 +315,48 @@ if __name__ == '__main__':
     import yaml
     from easydict import EasyDict
     # config setting
-    config = EasyDict(yaml.load(open(r"I:\手术视频操作关系分析与理解\Triplets-main\config.yml", 'r', encoding="utf-8"), Loader=yaml.FullLoader))
+    config = EasyDict(yaml.load(open('/workspace/Jeming/Tri/Triplets_New/config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
     
     batch_size = 2
-    data_dir = '/CholecT45/'
+    data_dir = '/root/.cache/huggingface/forget/datasets/CholecT45/'
     dataset_variant = 'cholect45-crossval'
     kfold = 1
     data_augmentations = ['original', 'vflip', 'hflip', 'contrast', 'rot90']
     
-    train_loader, val_loader, test_loader = give_dataset(config.dataset)
+    # 初始化BERT tokenizer, 注意tokenizer要作为超参传入函数，不能全局定义
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+    instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator'] 
+    target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'null_target']       
+    verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'null_verb']      
+        
+    all_list = instrument_list + target_list + verb_list
+
+    # TODO: 要将一些特殊词加到分词器中
+    def add_tokens_tokenizer(tokenizer, all_list):
+        add = []
+        for word in all_list:
+            if word in tokenizer.vocab:
+                pass
+            else:
+                print(f"'{word}' is not in the BERT vocabulary.")
+                add.append(word)
+        num_added_toks = tokenizer.add_tokens(add)
+        print('Now we have added', num_added_toks, 'tokens')
+        return tokenizer
+
+    tokenizer = add_tokens_tokenizer(tokenizer, all_list)
     
-    dataset = CholecT50( 
-            dataset_dir=data_dir, 
-            dataset_variant=dataset_variant,
-            test_fold=kfold,
-            augmentation_list=data_augmentations,
-            )
-    train_dataset, val_dataset, test_dataset = dataset.build()
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, prefetch_factor=3*batch_size, num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
+    
+    train_loader, val_loader, test_loader = give_dataset(config.dataset.T45, tokenizer)
+    
+    # dataset = CholecT50( 
+    #         dataset_dir=data_dir, 
+    #         dataset_variant=dataset_variant,
+    #         test_fold=kfold,
+    #         augmentation_list=data_augmentations,
+    #         )
+    # train_dataset, val_dataset, test_dataset = dataset.build()
+    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, prefetch_factor=3*batch_size, num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
     
     for batch, (img, txt,(y1, y2, y3, y4)) in enumerate(train_loader):
             img, txt,y1, y2, y3, y4 = img.cuda(), txt.cuda(),y1.cuda(), y2.cuda(), y3.cuda(), y4.cuda()

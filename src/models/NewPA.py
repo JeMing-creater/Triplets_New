@@ -14,11 +14,7 @@ from timm.models.registry import register_model
 from transformers import BertTokenizer, BertModel, MobileBertTokenizer, MobileBertModel,BertForMaskedLM
 from timm.models.layers import DropPath, to_2tuple, make_divisible, trunc_normal_
 
-from peft import PeftModel, PeftConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer, CLIPVisionConfig, CLIPVisionModel, CLIPImageProcessor
-from transformers import GPT2Tokenizer,GPT2LMHeadModel
-from huggingface_hub import hf_hub_download
-from llama_cpp import Llama
 from transformers import AutoTokenizer
 from transformers import AutoTokenizer, AutoModel, AutoModelForMaskedLM
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions, MaskedLMOutput
@@ -398,7 +394,56 @@ class DynamicAttention(nn.Module):
         output = context[:, :target_length, :]
         return output
 
+class AttentionClassifier(nn.Module):
+    def __init__(self, query_dim, key_dim, value_dim, num_heads=4, num_class=100, i_num=6, t_num=15, v_num=10):
+        super(AttentionClassifier, self).__init__() 
+        
+        self.query_proj = nn.Linear(query_dim, key_dim)
+        self.key_proj = nn.Linear(key_dim, key_dim)
+        self.value_proj = nn.Linear(value_dim, key_dim)
+        self.num_heads = num_heads
+        self.head_dim = key_dim // num_heads
 
+        assert self.head_dim * num_heads == key_dim, "key_dim must be divisible by num_heads"
+        
+        self.instrument_shape_layer = Linear(i_num * v_num, key_dim)
+        self.target_shape_layer = Linear(t_num * v_num, key_dim)
+        self.verb_shape_layer = Linear(v_num * i_num, key_dim)
+        
+        # self.gmp = nn.AdaptiveMaxPool2d((1,1)) 
+        self.mlp = nn.Linear(in_features=key_dim, out_features=num_class)    
+        
+    def forward(self, inputs):
+        instrument, target, verb = inputs
+        i_num = instrument.size()[-1] # 6
+        t_num = target.size()[-1] # 15
+        v_num = verb.size()[-1] # 10
+        
+        query = instrument.repeat(1, 1, v_num).view(-1, i_num * v_num)
+        # query = self.instrument_shape_layer(query)
+        key = target.repeat(1, 1, v_num).view(-1, t_num * v_num)
+        # key = self.target_shape_layer(key)
+        value = verb.repeat(1, i_num, 1).view(-1, v_num * i_num)
+        # value = self.verb_shape_layer(value)
+        
+        batch_size = query.size(0)
+
+        # Project the query, key, and value matrices
+        query = self.query_proj(query).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        key = self.key_proj(key).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        value = self.value_proj(value).view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+
+        # Compute the attention scores
+        scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        
+        attention = F.softmax(scores, dim=-1)
+
+        # Aggregate the values
+        out = torch.matmul(attention, value)
+        out = out.transpose(1, 2).contiguous().view(batch_size, -1, self.num_heads * self.head_dim)
+        
+        out = self.mlp(out.squeeze(1))
+        return out
 
 class PA(nn.Module):
     def __init__(self, tokenizer, in_channel = 3, out_channel = 100, i_num = 6, t_num=15, v_num=10, num_heads=10, dims = [64, 128, 320, 512], model_dir='/root/.cache/huggingface/forget/pvt_v2_b3.pth'):
@@ -426,7 +471,8 @@ class PA(nn.Module):
             
         self.MultimodalConnector = nn.Linear(1, self.model.bert.config.hidden_size)
         self.AttentionPool = DynamicAttention(self.model.bert.config.hidden_size, self.model.bert.config.hidden_size)
-    
+        self.Classifier = AttentionClassifier(query_dim= i_num * v_num, key_dim= t_num * v_num, value_dim= v_num * i_num, num_heads=num_heads, num_class=out_channel, i_num=i_num, t_num=t_num, v_num=v_num)
+        
     def get_instrument(self):
         word_indices = self.tokenizer.convert_tokens_to_ids(self.instrument_list)
         selected_confidences = self.text_instrument[:, word_indices]
@@ -500,8 +546,8 @@ class PA(nn.Module):
         self.text_verb = self.get_verb()
         
         # self.print_predict()
-        
-        return self.text_instrument, self.text_target, self.text_verb
+        triplet = self.Classifier((self.text_instrument, self.text_target, self.text_verb))
+        return self.text_instrument, self.text_target, self.text_verb, triplet
         
 
 # 修改词典
@@ -566,7 +612,7 @@ if __name__ == '__main__':
     input_text = torch.tensor([indexed_tokens]).to(device)
     
     model = PA(tokenizer).to(device)
-    model(input_image, input_text, masked_index)
+    text_instrument, text_target, text_verb = model(input_image, input_text, masked_index)
     
     
     

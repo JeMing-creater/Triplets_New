@@ -494,7 +494,7 @@ if __name__ == '__main__':
     import yaml
     from easydict import EasyDict
     # config setting
-    config = EasyDict(yaml.load(open('/workspace/Jeming/Triplets/config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
+    config = EasyDict(yaml.load(open('/workspace/Jeming/Tri/Triplets_New/config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
     
     batch_size = 2
     data_dir = '/root/.cache/huggingface/forget/datasets/CholecT45/'
