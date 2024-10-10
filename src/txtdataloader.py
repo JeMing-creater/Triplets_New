@@ -183,11 +183,11 @@ class CholecT50():
             lines = f.readlines()
 
             # TODO: 换成 20
-            if len(lines) < 10:
+            if len(lines) < 20:
                 raise ValueError(f"{text_file} does not have 20 sentences.")
 
             # 从前 20 句中随机选择一句
-            random_sentence = random.choice(lines[:10])
+            random_sentence = random.choice(lines[:20])
 
         return random_sentence.strip()
 
