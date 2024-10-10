@@ -279,9 +279,9 @@ class T50(Dataset):
 
         # 获取对应的文本
         # TODO: 看情况，如果文本标题是数字，就不用self.instrument_list等，但如果文本标题是文本，就确认一下这些个列表的元素顺序是否对应具体分类名字。
-        instrument_sentence = self.get_sentence_func('instrument', self.instrument_list[np.argmax(tool_label)])
-        target_sentence = self.get_sentence_func('target', self.target_list[np.argmax(target_label)])
-        verb_sentence = self.get_sentence_func('verb', self.verb_list[np.argmax(verb_label)])
+        instrument_sentence = self.get_sentence_func('instrument', np.argmax(tool_label))
+        target_sentence = self.get_sentence_func('target', np.argmax(target_label))
+        verb_sentence = self.get_sentence_func('verb', np.argmax(verb_label))
 
         # 对文本进行mask并转换为tensor
         txt_tensor = self.apply_mask_func(instrument_sentence, target_sentence, verb_sentence)
@@ -315,7 +315,7 @@ if __name__ == '__main__':
     import yaml
     from easydict import EasyDict
     # config setting
-    config = EasyDict(yaml.load(open('/workspace/Jeming/Tri/Triplets_New/config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
+    config = EasyDict(yaml.load(open('/workspace/Jeming/TriGit/config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
     
     batch_size = 2
     data_dir = '/root/.cache/huggingface/forget/datasets/CholecT45/'
@@ -366,3 +366,4 @@ if __name__ == '__main__':
             print(y2.shape)
             print(y3.shape)
             print(y4.shape)
+            
