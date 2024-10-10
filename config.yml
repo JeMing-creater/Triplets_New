@@ -30,7 +30,7 @@ dataset:
     num_workers: 4
     kfold: 1
     data_dir: '/root/.cache/huggingface/forget/datasets/CholecT45/'
-    text_path: '/workspace/Jeming/Tri/Triplets_New/src/text-data/'  # change to adapt your path
+    text_path: '/workspace/Jeming/TriGit/src/text-data'  # change to adapt your path
     dataset_variant: 'cholect45-crossval'
     pin_memory: True
     persistent_workers: True
@@ -43,7 +43,7 @@ dataset:
     num_workers: 4
     kfold: 1
     data_dir: '/root/.cache/huggingface/forget/datasets/CholecT50/'
-    text_path: '/workspace/Jeming/Tri/Triplets_New/src/text-data/'   # change to adapt your path
+    text_path: '/workspace/Jeming/TriGit/src/text-data'   # change to adapt your path
     m: 3
     weight_randa: False
     data_augmentations: ['rot90', 'hflip', 'contrast', 'original']

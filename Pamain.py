@@ -36,8 +36,7 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         
         tool, verb, target, triplet = model(img,txt)
         logit_ivt   = triplet
-        
-                        
+                  
         # loss_i      = loss_functions['loss_fn_i'](logit_i, y1.float())
         # loss_v      = loss_functions['loss_fn_v'](logit_v, y2.float())
         # loss_t      = loss_functions['loss_fn_t'](logit_t, y3.float())
@@ -55,9 +54,6 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         # log
         accelerator.log({
             'Train/Total Loss': float(loss.item()),
-            'Train/loss_i': float(loss_i.item()),
-            'Train/loss_v': float(loss_v.item()),
-            'Train/loss_t': float(loss_t.item()),
             'Train/loss_ivt': float(loss_ivt.item()),
         }, step=step)
         step += 1
