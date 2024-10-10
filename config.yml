@@ -26,12 +26,12 @@ finetune:
 
 dataset:
   T45:
-    batch_size: 4
+    batch_size: 32
     class_num: 100
     num_workers: 4
     kfold: 1
     data_dir: '/root/.cache/huggingface/forget/datasets/CholecT45/'
-text_path: '/workspace/Jeming/Triple_git/src/text-data'  # change to adapt your path
+    text_path: '/workspace/Jeming/Triple_git/src/text-data/'  # change to adapt your path
     dataset_variant: 'cholect45-crossval'
     pin_memory: True
     persistent_workers: True
@@ -44,8 +44,7 @@ text_path: '/workspace/Jeming/Triple_git/src/text-data'  # change to adapt your 
     num_workers: 4
     kfold: 1
     data_dir: '/root/.cache/huggingface/forget/datasets/CholecT50/'
-
-    text_path: '/workspace/Jeming/Triple_git/src/text-data'   # change to adapt your path
+    text_path: '/workspace/Jeming/Triple_git/src/text-data/'   # change to adapt your path
     m: 3
     weight_randa: False
     data_augmentations: ['rot90', 'hflip', 'contrast', 'original']
