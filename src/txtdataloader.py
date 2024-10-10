@@ -192,23 +192,24 @@ class CholecT50():
         return random_sentence.strip()
 
     # Mask操作
-    def apply_mask(self, instrument, target, verb, max_len=100):
+    def apply_mask(self, instrument, target, verb, all_list, max_len=100):
         input_text = '[CLS] ' + instrument + ' [SEP] ' + '[CLS] ' + target + ' [SEP] ' + '[CLS] ' + verb + ' [SEP]'
         input_text = input_text.split()
         masked_index = []
         cls_num = 0
-
+        instrument_list, target_list, verb_list = all_list
+        
         # 遍历单词并进行mask
         for word_num in range(len(input_text)):
-            if cls_num == 1 and input_text[word_num] == instrument:
+            if cls_num == 1 and input_text[word_num] in instrument_list:
                 input_text[word_num] = '[MASK]'
                 masked_index.append(word_num)
 
-            if cls_num == 2 and input_text[word_num] == target:
+            if cls_num == 2 and input_text[word_num] in target_list:
                 input_text[word_num] = '[MASK]'
                 masked_index.append(word_num)
 
-            if cls_num == 3 and input_text[word_num] == verb:
+            if cls_num == 3 and input_text[word_num] in verb_list:
                 input_text[word_num] = '[MASK]'
                 masked_index.append(word_num)
 
@@ -284,7 +285,9 @@ class T50(Dataset):
         verb_sentence = self.get_sentence_func('verb', np.argmax(verb_label))
 
         # 对文本进行mask并转换为tensor
-        txt_tensor = self.apply_mask_func(instrument_sentence, target_sentence, verb_sentence)
+        all_list = [self.instrument_list, self.target_list, self.verb_list]      
+      
+        txt_tensor = self.apply_mask_func(instrument_sentence, target_sentence, verb_sentence, all_list)
 
         return image, txt_tensor, (tool_label, verb_label, target_label, triplet_label)
 
