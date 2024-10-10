@@ -34,6 +34,7 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
     model.train()
     for batch, (img, txt,(y1, y2, y3, y4)) in enumerate(train_loader):
         
+
         tool, target, verb, triplet = model(img, txt)
                    
         tool_mask_loss = loss_functions['CrossEntropyLoss'](tool, y1.float())
@@ -41,6 +42,7 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         verb_mask_loss = loss_functions['CrossEntropyLoss'](verb, y3.float())
         loss_ivt    = loss_functions['BCEWithLogitsLoss'](triplet, y4.float())  
         loss        =  tool_mask_loss + target_mask_loss + verb_mask_loss + loss_ivt 
+
         
         # lose backward
         accelerator.backward(loss)
