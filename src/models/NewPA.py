@@ -542,7 +542,7 @@ class PA(nn.Module):
         # text embeddings
         text_embedding = self.model.bert.embeddings(input_text)
         
-        mask_token_id = self.tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
+        mask_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
         
         self.masked_indexs = []
         for i in range(input_text.shape[0]):

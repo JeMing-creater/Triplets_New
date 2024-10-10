@@ -268,5 +268,15 @@ def step_params(param_dict):
     for key in param_dict.keys():
         param_dict[key].step()
 
-
+def add_tokens_tokenizer(tokenizer, all_list):
+    add = []
+    for word in all_list:
+        if word in tokenizer.vocab:
+            pass
+        else:
+            print(f"'{word}' is not in the BERT vocabulary.")
+            add.append(word)
+    num_added_toks = tokenizer.add_tokens(add)
+    print('Now we have added', num_added_toks, 'tokens')
+    return tokenizer
 

@@ -492,7 +492,7 @@ class PA(nn.Module):
     def forward(self, image, input_text, masked_index=[]):
         
         # # # # # # # # # # # # # # # # # # # # # Mask index # # # # # # # # # # # # # # # # # # # # # 
-        mask_token_id = self.tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
+        mask_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
         self.masked_indexs = []
         for i in range(input_text.shape[0]):
             # 获取当前文本中的掩码位置
