@@ -42,7 +42,6 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         loss_ivt    = loss_functions['BCEWithLogitsLoss'](triplet, y4.float())  
         loss        =  tool_mask_loss + target_mask_loss + verb_mask_loss + loss_ivt 
 
-        
         # lose backward
         accelerator.backward(loss)
         
