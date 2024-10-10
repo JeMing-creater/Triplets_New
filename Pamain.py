@@ -19,7 +19,7 @@ from transformers import AutoTokenizer
 from src.txtdataloader import give_dataset
 from src.optimizer import give_scheduler, LinearWarmupCosineAnnealingLR
 from src.utils import same_seeds, Logger, get_weight_balancing, set_param_in_device, step_params, resume_train_state, load_pretrain_model, add_tokens_tokenizer
-from src.eval import val
+from src.eval import val, PA_val
 # model
 from src.models.rendezvous import Rendezvous
 from src.models.RIT import RiT
@@ -29,48 +29,53 @@ from src.models.NewPA import PA
 config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
 
    
-def train_one_epoch(config, model, activation, train_loader, loss_functions, optimizers, schedulers, accelerator, epoch, step):
+def train_one_epoch(config, model, activation, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, step):
     # train
     model.train()
     for batch, (img, txt,(y1, y2, y3, y4)) in enumerate(train_loader):
         
-        tool, verb, target, triplet = model(img,txt)
-        logit_ivt   = triplet
-                  
-        # loss_i      = loss_functions['loss_fn_i'](logit_i, y1.float())
-        # loss_v      = loss_functions['loss_fn_v'](logit_v, y2.float())
-        # loss_t      = loss_functions['loss_fn_t'](logit_t, y3.float())
-        loss_ivt    = loss_functions['loss_fn_ivt'](logit_ivt, y4.float())  
-        loss        =  + loss_ivt 
+
+        tool, target, verb, triplet = model(img, txt)
+                   
+        tool_mask_loss = loss_functions['CrossEntropyLoss'](tool, y1.float())
+        target_mask_loss = loss_functions['CrossEntropyLoss'](target, y2.float())
+        verb_mask_loss = loss_functions['CrossEntropyLoss'](verb, y3.float())
+        loss_ivt    = loss_functions['BCEWithLogitsLoss'](triplet, y4.float())  
+        loss        =  tool_mask_loss + target_mask_loss + verb_mask_loss + loss_ivt 
+
         
         # lose backward
         accelerator.backward(loss)
         
         # optimizer.step
-        step_params(optimizers)
+        optimizer.step()
+        optimizer.zero_grad()
         
         model.zero_grad()
         
         # log
         accelerator.log({
             'Train/Total Loss': float(loss.item()),
+            'Train/tool_mask_loss': float(tool_mask_loss.item()),
+            'Train/target_mask_loss': float(target_mask_loss.item()),
+            'Train/verb_mask_loss': float(verb_mask_loss.item()),
             'Train/loss_ivt': float(loss_ivt.item()),
         }, step=step)
         step += 1
         accelerator.print(
-            f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f}] v: [{loss_v.item():.4f}] t: [{loss_t.item():.4f}]', flush=True)
+            f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{tool_mask_loss.item():.4f}] v: [{verb_mask_loss.item():.4f}] t: [{target_mask_loss.item():.4f}]', flush=True)
     # learning rate schedule update
-    step_params(schedulers)
-    accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}] Epoch Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f}] v: [{loss_v.item():.4f}] t: [{loss_t.item():.4f}]', flush=True)    
+    scheduler.step(epoch)
+    # accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}] Epoch Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f}] v: [{loss_v.item():.4f}] t: [{loss_t.item():.4f}]', flush=True)    
 
     if config.trainer.val_training == True:
-        metrics, _ = val(config, model, train_loader, activation, step=-1, train=True)
+        metrics, _ = PA_val(config, model, train_loader, activation, step=-1, train=True)
         accelerator.log(metrics, step=epoch)
     
     return step
 
 def val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, step):
-    metrics, step = val(config, model, val_loader, activation, step=step, train=False)
+    metrics, step = PA_val(config, model, val_loader, activation, step=step, train=False)
     i_score = metrics['Val/I']
     t_score = metrics['Val/T']
     v_score = metrics['Val/V']
@@ -110,6 +115,7 @@ if __name__ == '__main__':
                                                   weight_decay=config.trainer.weight_decay,
                                                   lr=config.trainer.lr[0], betas=(0.9, 0.95))
     
+    # scheduler
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
                                               max_epochs=config.trainer.num_epochs)
     
@@ -135,13 +141,43 @@ if __name__ == '__main__':
     if config.trainer.resume.test:
         model = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/pytorch_model.bin", model, accelerator)
     
+    # set in device
     model, train_loader, val_loader, optimizer, scheduler = accelerator.prepare(model, train_loader, val_loader, optimizer, scheduler)
     
     # training
-    if config.trainer.is_train:
-        for epoch in range(start_num_epochs, config.trainer.num_epochs):
-            # train
-            train_step = train_one_epoch(config, model, activation, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, train_step)
-            score, metrics, val_step = val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, val_step)
+    if config.trainer.is_train == True:
+        if config.trainer.is_train:
+            for epoch in range(start_num_epochs, config.trainer.num_epochs):
+                # train
+                train_step = train_one_epoch(config, model, activation, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, train_step)
+                score, metrics, val_step = val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, val_step)
+                
+                # save best model
+                if best_score.item() < score:
+                    best_score = score
+                    best_metrics = metrics
+                    # two types of modeling saving
+                    accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/")
+                    torch.save(model.state_dict(), f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/model.pth")
+                    torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
+                            f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/epoch.pth.tar')
+                    
+                # print best score
+                accelerator.print(f'Now best APscore: {best_score}', flush=True)
+                
+                # checkout
+                accelerator.print('Checkout....')
+                accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint")
+                torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
+                            f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint/epoch.pth.tar')
+                accelerator.print('Checkout Over!')
+    
+    # val
+    if config.trainer.is_train != True:
+        best_score, best_metrics, val_step = val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, val_step)
+     
+    accelerator.print(f"dice ivt score: {best_score}")
+    accelerator.print(f"other metrics : {best_metrics}")
+    sys.exit(1) 
             
     
