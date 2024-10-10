@@ -81,7 +81,7 @@ def PA_val(config, model, dataloader, activation, step=0, train=False):
         if config.trainer.dataset == 'T50':
             b, m, c, h, w = img.size()
             img = img.view(-1, c, h, w)
-        _, _, _, triplet = model(img, txt)
+        _, _, _, triplet = model(img, txt.squeeze())
         
         logit_ivt  = triplet  
         if config.trainer.dataset == 'T50':

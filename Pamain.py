@@ -32,9 +32,9 @@ config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=ya
 def train_one_epoch(config, model, activation, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, step):
     # train
     model.train()
-    for batch, (img, txt,(y1, y2, y3, y4)) in enumerate(train_loader):
+    for batch, (img, txt, (y1, y2, y3, y4)) in enumerate(train_loader):
         
-        tool, target, verb, triplet = model(img, txt)
+        tool, target, verb, triplet = model(img, txt.squeeze())
                    
         tool_mask_loss = loss_functions['CrossEntropyLoss'](tool, y1.float())
         target_mask_loss = loss_functions['CrossEntropyLoss'](target, y2.float())

@@ -361,7 +361,7 @@ if __name__ == '__main__':
     for batch, (img, txt,(y1, y2, y3, y4)) in enumerate(train_loader):
             img, txt,y1, y2, y3, y4 = img.cuda(), txt.cuda(),y1.cuda(), y2.cuda(), y3.cuda(), y4.cuda()
             print(img.shape)
-            print(txt.shape)
+            print(txt.squeeze().shape)
             print(y1.shape)
             print(y2.shape)
             print(y3.shape)
