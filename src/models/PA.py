@@ -11,8 +11,9 @@ import torch.nn.functional as F
 import torchvision.models as basemodels
 import torchvision.transforms as transforms
 from timm.models.registry import register_model
-from transformers import BertTokenizer, BertModel, MobileBertTokenizer, MobileBertModel,BertForMaskedLM
+from transformers import AutoTokenizer, BertTokenizer, BertModel, MobileBertTokenizer, MobileBertModel,BertForMaskedLM
 from timm.models.layers import DropPath, to_2tuple, make_divisible, trunc_normal_
+from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions, MaskedLMOutput
 
 class OverlapPatchEmbed(nn.Module):
     """ Image to Patch Embedding
@@ -422,7 +423,9 @@ class PA(nn.Module):
         # =========================== Text ===============================
         # self.model = MobileBertModel.from_pretrained("mobilebert-uncased")
         # self.testmodel = BertForMaskedLM.from_pretrained('bert-base-uncased')
-        self.model = BertModel.from_pretrained('bert-base-uncased')
+        # self.model = BertModel.from_pretrained('bert-base-uncased')
+        self.modelLM = BertForMaskedLM.from_pretrained('bert-base-uncased')
+        self.model = self.modelLM.bert
         self.text_embeddings = self.model.embeddings
         self.text_encoder = self.model.encoder
         # self.text_pooler = self.model.pooler
@@ -432,9 +435,9 @@ class PA(nn.Module):
         self.target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'null_target']       
         self.verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'null_verb']      
         
-        self.instrument_layer = Linear(self.model.config.hidden_size, len(self.instrument_list))
-        self.target_layer = Linear(self.model.config.hidden_size, len(self.target_list))
-        self.verb_layer = Linear(self.model.config.hidden_size, len(self.verb_list))
+        # self.instrument_layer = Linear(self.model.config.hidden_size, len(self.instrument_list))
+        # self.target_layer = Linear(self.model.config.hidden_size, len(self.target_list))
+        # self.verb_layer = Linear(self.model.config.hidden_size, len(self.verb_list))
         
         # ========================== Image ===============================
         self.image_encoder = pvt_v2_b2(in_chans=in_channel, embed_dims=dims)
@@ -454,14 +457,54 @@ class PA(nn.Module):
         self.key_proj = nn.Linear(self.model.config.hidden_size, self.model.config.hidden_size)
         self.value_proj = nn.Linear(self.model.config.hidden_size, self.model.config.hidden_size)
 
-    def forward(self, image, input_text, masked_index):
-        # out = self.testmodel(input_text)      
+    def get_instrument(self):
+        word_indices = self.tokenizer.convert_tokens_to_ids(self.instrument_list)
+        selected_confidences = self.text_instrument[:, word_indices]
+        return selected_confidences
+    
+    def get_target(self):
+        word_indices = self.tokenizer.convert_tokens_to_ids(self.target_list)
+        selected_confidences = self.text_target[:, word_indices]
+        return selected_confidences
+    
+    def get_verb(self):
+        word_indices = self.tokenizer.convert_tokens_to_ids(self.verb_list)
+        selected_confidences = self.text_verb[:, word_indices]
+        return selected_confidences
+    
+    def give_output(self):
+        instrument_list = []
+        target_list = []
+        verb_list = []
+        for masked_index in range(0, len(self.masked_indexs)):
+            self.text_instrument = self.predictions[masked_index].unsqueeze(0)[0: , self.masked_indexs[masked_index][0],:]
+            self.text_target = self.predictions[masked_index].unsqueeze(0)[0: , self.masked_indexs[masked_index][1],:]
+            self.text_verb = self.predictions[masked_index].unsqueeze(0)[0: , self.masked_indexs[masked_index][2],:]
+            text_instrument = self.get_instrument()
+            instrument_list.append(text_instrument)
+            text_target = self.get_target()
+            target_list.append(text_target)
+            text_verb = self.get_verb()
+            verb_list.append(text_verb)
+        return torch.cat(instrument_list, dim=0), torch.cat(target_list, dim=0), torch.cat(verb_list, dim=0)        
+    
+    
+    def forward(self, image, input_text, masked_index=[]):
+        
+        # # # # # # # # # # # # # # # # # # # # # Mask index # # # # # # # # # # # # # # # # # # # # # 
+        mask_token_id = self.tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
+        self.masked_indexs = []
+        for i in range(input_text.shape[0]):
+            # 获取当前文本中的掩码位置
+            positions = torch.where(input_text[i]== mask_token_id)[0].tolist()
+            # 将掩码位置添加到列表中
+            self.masked_indexs.append(positions)
+             
         # # # # # # # # # # # # # # # # # # # # # Text encode # # # # # # # # # # # # # # # # # 
         embeddings = self.text_embeddings(input_text)
         text_encoder_outputs = self.text_encoder(embeddings)
         text_features = text_encoder_outputs[0]
-        # pooled_output = self.text_pooler(sequence_output)
-        # text_features = pooled_output
+        encoder_outputs = text_encoder_outputs
         
         # # # # # # # # # # # # # # # # # # # # # Image encode # # # # # # # # # # # # # # # # #
         image_features = self.image_encoder(image)
@@ -485,46 +528,55 @@ class PA(nn.Module):
         outputs = self.query_proj(outputs)
         
         # # # # # # # # # # # # # # # # # # # # # Finally predict # # # # # # # # # # # # # # # # # # # # # # # #
-        predictions = outputs 
-        # 1. instrument text
-        instrument = self.instrument_layer(predictions)
-        # 2. target text
-        target = self.target_layer(predictions)
-        # 3. verb text
-        verb = self.verb_layer(predictions)
+
+        outputs = BaseModelOutputWithPoolingAndCrossAttentions(
+            last_hidden_state=outputs,
+            pooler_output=None,
+            past_key_values=encoder_outputs.past_key_values,
+            hidden_states=encoder_outputs.hidden_states,
+            attentions=encoder_outputs.attentions,
+            cross_attentions=encoder_outputs.cross_attentions,
+        )
+        
+        se_output = outputs[0]
+        prediction_scores = self.modelLM.cls(se_output)
+        
+        predictions = MaskedLMOutput(
+            loss=None,
+            logits=prediction_scores,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+        self.predictions = predictions[0]
+        
+        # # 1. instrument text
+        # instrument = self.instrument_layer(predictions)
+        # # 2. target text
+        # target = self.target_layer(predictions)
+        # # 3. verb text
+        # verb = self.verb_layer(predictions)
            
-        # # predict：Take the predicted index value corresponding to the [MASK] character from the output result。
-        predicted_instrument = torch.argmax(instrument[0, masked_index[0]]).item()
-        instrument_token = self.instrument_list[predicted_instrument]
-        print('Instrument Predicte:', instrument_token)
+        # # # predict：Take the predicted index value corresponding to the [MASK] character from the output result。
+        # predicted_instrument = torch.argmax(instrument[0, masked_index[0]]).item()
+        # instrument_token = self.instrument_list[predicted_instrument]
+        # print('Instrument Predicte:', instrument_token)
         
-        predicted_target = torch.argmax(target[0, masked_index[1]]).item()
-        target_token = self.target_list[predicted_target]
-        print('Target Predicte:', target_token)
+        # predicted_target = torch.argmax(target[0, masked_index[1]]).item()
+        # target_token = self.target_list[predicted_target]
+        # print('Target Predicte:', target_token)
         
-        predicted_verb = torch.argmax(verb[0, masked_index[2]]).item()
-        verb_token = self.verb_list[predicted_verb]
-        print('Verb Predicte:', verb_token)
+        # predicted_verb = torch.argmax(verb[0, masked_index[2]]).item()
+        # verb_token = self.verb_list[predicted_verb]
+        # print('Verb Predicte:', verb_token)
         
         # ======================== text output =================================
-        text_instrument, text_target, text_verb = instrument[0: ,masked_index[0],:], target[0: ,masked_index[1],:], verb[0: ,masked_index[2],:]
-        
+        # text_instrument, text_target, text_verb = instrument[0: ,masked_index[0],:], target[0: ,masked_index[1],:], verb[0: ,masked_index[2],:]
+        instrument, target, verb = self.give_output()
         # ======================= image output =================================
-        # image output needs 4 outputs, consider transfer text output to image output.
-        # max pooling needs to consider the significant words in the text, but I still not sure about this aspect.
-        # [batch size, 6] instrument
-        image_instrument, _ = torch.max(instrument, dim=1)
-        # [batch size, 15] target
-        image_target, _ = torch.max(target, dim=1)
-        # [batch size, 10] verb
-        image_verb, _ = torch.max(verb, dim=1)
-        # [batch size, 100] triplet
-        # triplet considers the combination of three key words, and needs a special module to fix this output. 
-        
-        triplet = self.classifier((image_instrument, image_target, image_verb))
+        triplet = self.classifier((instrument, target, verb))
         
         # return text_token
-        return (text_instrument, text_target, text_verb), (image_instrument, image_target, image_verb, triplet)
+        return (instrument, target, verb), (instrument, target, verb, triplet)
     
 def weight(model, x):
     image, input_text, masked_index = x
@@ -537,58 +589,81 @@ def weight(model, x):
     throughout = round(image.shape[0] / (need_time / 1), 3)
     print('throughout: {} FPS'.format(throughout))
 
+# 修改词典
+def add_tokens_tokenizer(tokenizer, all_list):
+    add = []
+    for word in all_list:
+        if word in tokenizer.vocab:
+            pass
+        else:
+            print(f"'{word}' is not in the BERT vocabulary.")
+            add.append(word)
+    num_added_toks = tokenizer.add_tokens(add)
+    print('Now we have added', num_added_toks, 'tokens')
+    return tokenizer
 
+def batch_txt(tokenizer, batch_size = 2):
+    tensor_list = []
+    for i in range(0, batch_size):
+        instrument = 'This instrument plays a vital role in the surgical process, helping doctors to operate more precisely, ensuring that each step meets the expected results while reducing errors in operation.'
+        target = 'This target is the area that doctors pay close attention to during the operation, and usually needs to be treated with sophisticated technical means to ensure the safety of the operation.'
+        verb = 'During surgery, doctors often use this action to precisely control the details of the target area to ensure a smooth operation.'
+        
+        input_text = '[CLS]' + instrument + '[SEP]' + '[CLS]' + target + '[SEP]' + '[CLS]' + verb + '[SEP]'
+        
+        input_text = tokenizer.tokenize(input_text)
+        
+        # mask: 每句掩码一个词，一共三个
+        masked_index = []
+        cls_num = 0
+        for word_num in range(0, len(input_text)):
+            if cls_num == 1 and input_text[word_num] == 'instrument':
+                input_text[word_num] = '[MASK]'
+                masked_index.append(word_num)
+                
+            if cls_num == 2 and input_text[word_num] == 'target': 
+                input_text[word_num] = '[MASK]'
+                masked_index.append(word_num)
+            
+            if cls_num == 3 and input_text[word_num] == 'action':
+                input_text[word_num] = '[MASK]'
+                masked_index.append(word_num)
+            
+            if input_text[word_num] == '[CLS]':
+                cls_num += 1
+                
+        indexed_tokens = tokenizer.convert_tokens_to_ids(input_text)
+        tensor_list.append(indexed_tokens) 
+    input_text = torch.tensor(tensor_list)
+    return input_text
+   
     
 if __name__ == '__main__':
     device = 'cuda:0'
-    instrument = 'This instrument plays a vital role in the surgical process, helping doctors to operate more precisely, ensuring that each step meets the expected results while reducing errors in operation.'
-    target = 'This target is the area that doctors pay close attention to during the operation, and usually needs to be treated with sophisticated technical means to ensure the safety of the operation.'
-    verb = 'During surgery, doctors often use this action to precisely control the details of the target area to ensure a smooth operation.'
     
-    input_text = '[CLS]' + instrument + '[SEP]' + '[CLS]' + target + '[SEP]' + '[CLS]' + verb + '[SEP]'
-    # img_path = "/root/.cache/huggingface/forget/datasets/CholecT45/data/VID01/000000.png"
-    # raw_image = Image.open(img_path).convert('RGB')
-    # image = torch.tensor(raw_image)
+    instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator'] 
+    target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'null_target']       
+    verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'null_verb']      
+        
+    add_list = instrument_list + target_list + verb_list
+    
+    # load textokenizert
+    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+    
     image = torch.randn(1, 3, 256, 448).to(device)
     
-    # load text
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    # tokenizer = MobileBertTokenizer.from_pretrained("mobilebert-uncased")
-    input_text = tokenizer.tokenize(input_text)
-    
-    # mask: 每句掩码一个词，一共三个
-    masked_index = []
-    cls_num = 0
-    for word_num in range(0, len(input_text)):
-        if cls_num == 1 and input_text[word_num] == 'instrument':
-            input_text[word_num] = '[MASK]'
-            masked_index.append(word_num)
-            
-        if cls_num == 2 and input_text[word_num] == 'target': 
-            input_text[word_num] = '[MASK]'
-            masked_index.append(word_num)
-        
-        if cls_num == 3 and input_text[word_num] == 'action':
-            input_text[word_num] = '[MASK]'
-            masked_index.append(word_num)
-        
-        if input_text[word_num] == '[CLS]':
-            cls_num += 1
-    
-    # tensor
-    indexed_tokens = tokenizer.convert_tokens_to_ids(input_text)
-    input_text = torch.tensor([indexed_tokens]).to(device)
+    input_text = batch_txt(tokenizer, batch_size= 1).to(device)
     
     # model
     model = PA(tokenizer).to(device)
-    outputs = model(image, input_text, masked_index)
+    (text_instrument, text_target, text_verb), (image_instrument, image_target, image_verb, triplet) = model(image, input_text)
     # weight(model, (image, input_text, masked_index))
     
     
     # ======================================= Train example =====================================
     # TODO: this example only shows how to calculate loss, and needs the user to complete the whole training work.
-    model = PA(tokenizer).to(device)
-    (text_instrument, text_target, text_verb), (image_instrument, image_target, image_verb, triplet) = model(image, input_text, masked_index)
+    # model = PA(tokenizer).to(device)
+    # (text_instrument, text_target, text_verb), (image_instrument, image_target, image_verb, triplet) = model(image, input_text)
     
     # ======================================    Triplet     ===================================== 
     tool_weight     = [0.93487068, 0.94234964, 0.93487068, 1.18448115, 1.02368339, 0.97974447]
