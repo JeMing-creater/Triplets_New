@@ -406,9 +406,9 @@ class AttentionClassifier(nn.Module):
 
         assert self.head_dim * num_heads == key_dim, "key_dim must be divisible by num_heads"
         
-        self.instrument_shape_layer = Linear(i_num * v_num, key_dim)
-        self.target_shape_layer = Linear(t_num * v_num, key_dim)
-        self.verb_shape_layer = Linear(v_num * i_num, key_dim)
+        # self.instrument_shape_layer = Linear(i_num * v_num, key_dim)
+        # self.target_shape_layer = Linear(t_num * v_num, key_dim)
+        # self.verb_shape_layer = Linear(v_num * i_num, key_dim)
         
         # self.gmp = nn.AdaptiveMaxPool2d((1,1)) 
         self.mlp = nn.Linear(in_features=key_dim, out_features=num_class)    
@@ -495,7 +495,7 @@ class PA(nn.Module):
             
         self.MultimodalConnector = nn.Linear(1, self.model.bert.config.hidden_size)
         # self.MultimodalConnector = MultimodalConnector(dims[-1], self.model.bert.config.hidden_size)
-        self.AttentionPool = DynamicAttention(self.model.bert.config.hidden_size, self.model.bert.config.hidden_size)
+        # self.AttentionPool = DynamicAttention(self.model.bert.config.hidden_size, self.model.bert.config.hidden_size)
         self.Classifier = AttentionClassifier(query_dim= i_num * v_num, key_dim= t_num * v_num, value_dim= v_num * i_num, num_heads=num_heads, num_class=out_channel, i_num=i_num, t_num=t_num, v_num=v_num)
         
     def get_instrument(self):

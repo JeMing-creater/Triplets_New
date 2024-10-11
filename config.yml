@@ -14,7 +14,7 @@ trainer:
   decay_rate: 0.99
   weight_decay: 0.05
   weight_decay_end: 0.04
-  val_training: False
+  val_training: True
   resume: 
     train: True
     test: False
