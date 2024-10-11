@@ -62,6 +62,7 @@ def val(config, model, dataloader, activation, step=0, train=False):
     
     return metrics, step
 
+
 def PA_val(config, model, dataloader, activation, step=0, train=False):
     model.eval()
     data_choose = config.trainer.dataset
