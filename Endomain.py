@@ -109,14 +109,6 @@ if __name__ == '__main__':
     accelerator.init_trackers(os.path.split(__file__)[-1].split(".")[0])
     accelerator.print(objstr(config), flush=True)
     
-    # # tokenizer and add word
-    # tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-    # instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator'] 
-    # target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'othertarget']       
-    # verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'others']      
-        
-    # all_list = instrument_list + target_list + verb_list
-    # tokenizer = add_tokens_tokenizer(tokenizer, all_list)
     
     # # load dataset
     train_loader, val_loader, test_loader = give_dataset(config)
@@ -125,9 +117,7 @@ if __name__ == '__main__':
     model = EndoForm(in_channels=3)
     
     # optimizer
-    optimizer = optim_factory.create_optimizer_v2(model, opt=config.trainer.optimizer,
-                                                  weight_decay=config.trainer.weight_decay,
-                                                  lr=config.trainer.lr[0], betas=(0.9, 0.95))
+    optimizer = torch.optim.SGD(model.parameters(), lr=config.trainer.lr[0], weight_decay=1e-6, momentum=0.95)
     
     # scheduler
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,

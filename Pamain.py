@@ -37,8 +37,8 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         tool, target, verb, triplet = model(img, txt.squeeze())
        
         tool_mask_loss = loss_functions['CrossEntropyLoss'](tool, y1.float())
-        target_mask_loss = loss_functions['CrossEntropyLoss'](target, y2.float())
-        verb_mask_loss = loss_functions['CrossEntropyLoss'](verb, y3.float())
+        target_mask_loss = loss_functions['CrossEntropyLoss'](verb, y2.float())
+        verb_mask_loss = loss_functions['CrossEntropyLoss'](target, y3.float())
         loss_ivt    = loss_functions['BCEWithLogitsLoss'](triplet, y4.float())  
         loss        =  tool_mask_loss + target_mask_loss + verb_mask_loss + loss_ivt 
 
@@ -62,6 +62,7 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         step += 1
         accelerator.print(
             f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{tool_mask_loss.item():.4f}] v: [{verb_mask_loss.item():.4f}] t: [{target_mask_loss.item():.4f}]', flush=True)
+        break
     # learning rate schedule update
     scheduler.step(epoch)
     # accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}] Epoch Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f}] v: [{loss_v.item():.4f}] t: [{loss_t.item():.4f}]', flush=True)    

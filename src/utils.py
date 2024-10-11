@@ -35,9 +35,13 @@ def resume_train_state(model, checkpoint, optimizers, schedulers, accelerator):
         train_step = epoch_checkpoint['train_step']
         val_step = epoch_checkpoint['val_step']
         model = load_pretrain_model(base_path + "/pytorch_model.bin", model, accelerator)
-        optimizers = load_param(base_path, optimizers, accelerator, 'optimizer')
-        schedulers = load_param(base_path, schedulers, accelerator, 'scheduler')
-    
+        if isinstance(optimizers, list):
+            optimizers = load_param(base_path, optimizers, accelerator, 'optimizer')
+            schedulers = load_param(base_path, schedulers, accelerator, 'scheduler')
+        else:
+            optimizers.load_state_dict(torch.load(base_path + "/optimizer.bin"))
+            schedulers.load_state_dict(torch.load(base_path + "/scheduler.bin"))
+        
         accelerator.print(f'Loading training state successfully! Start training from {starting_epoch}, Best score: {best_score}')
         
         return model, optimizers, schedulers, starting_epoch, train_step, val_step, best_score, best_metrics
