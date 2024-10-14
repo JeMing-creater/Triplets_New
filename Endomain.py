@@ -30,7 +30,7 @@ from src.models.EndoForm import EndoForm
 config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
 
    
-def train_one_epoch(config, model, activation, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, step):
+def train_one_epoch(config, model, activation, train_loader, loss_functions, optimizers, schedulers, accelerator, epoch, step):
     # train
     model.train()
     for batch, (img, (y1, y2, y3, y4)) in enumerate(train_loader):
@@ -60,11 +60,15 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         # lose backward
         accelerator.backward(loss)
         
-        # optimizer.step
-        optimizer.step()
-        optimizer.zero_grad()
+        # # optimizers.step
+        # optimizers.step()
+        # optimizers.zero_grad()
         
-        # model.zero_grad()
+        # # model.zero_grad()
+        # optimizer.step
+        step_params(optimizers)
+        
+        model.zero_grad()
         
         # log
         accelerator.log({
@@ -79,7 +83,8 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
             f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f}] v: [{loss_v.item():.4f}] t: [{loss_t.item():.4f}]', flush=True)
         # break
     # learning rate schedule update
-    scheduler.step(epoch)
+    # schedulers.step(epoch)
+    step_params(schedulers)
     accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}] Epoch Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f}] v: [{loss_v.item():.4f}] t: [{loss_t.item():.4f}]', flush=True)    
 
     if config.trainer.val_training == True:
@@ -115,13 +120,48 @@ if __name__ == '__main__':
     
     # load model
     model = EndoForm(in_channels=3)
+    # TODO: this setting is just for Rendezvous and RiT, split to three params. This setting may relate to the first TODO.
+    params1, params2, params3 = [], [], []
+    for key, value in dict(model.named_parameters()).items():
+        if value.requires_grad:
+            if 'fuse2' in key or 'block3' in key or 'block4' in key or 'verb_classifier' in key or 'backbone' in key: 
+                params1 += [{'params':[value]}]
+        
+            elif 'L_feature' in key or 'fuse' in key or 'block2' in key or 'two_classifier' in key :
+                params2 += [{'params':[value]}]
+
+            elif 'classifier' in key:
+                params3 += [{'params':[value]}]
+            else:
+                print("---- keys missed ------")
+                print(key)
+
+    # load optimizer and scheduler
+    opt_dict = {'opt1': {'lr': config.trainer.lr[0], 'sf': config.trainer.sf[0], 'iters': config.trainer.ms[0], 'gamma':  config.trainer.g[0]},
+                'opt2': {'lr': config.trainer.lr[1], 'sf': config.trainer.sf[1], 'iters': config.trainer.ms[1], 'gamma':  config.trainer.g[1]},
+                'opt3': {'lr': config.trainer.lr[2], 'sf': config.trainer.sf[2], 'iters': config.trainer.ms[2], 'gamma':  config.trainer.g[2]}
+            }
+    decay1 = 1e-6 
+    decay2 = 1e-6 
+    decay3 = 1e-6
+    mom_y  = 0.95
+    optimizers = {
+        'optimizer_i': torch.optim.SGD(params1, lr=opt_dict["opt1"]["lr"], weight_decay=decay1, momentum=mom_y),
+        'optimizer_vt': torch.optim.SGD(params2, lr=opt_dict["opt2"]["lr"], weight_decay=decay2, momentum=mom_y),
+        'optimizer_ivt': torch.optim.SGD(params3, lr=opt_dict["opt3"]["lr"], weight_decay=decay3, momentum=mom_y)
+        }
+    schedulers = {
+        'scheduler_i': give_scheduler(config, optimizers['optimizer_i'], 0),
+        'scheduler_vt': give_scheduler(config, optimizers['optimizer_vt'], 1),
+        'scheduler_ivt': give_scheduler(config, optimizers['optimizer_ivt'], 2),
+    }
+
+    # # optimizer
+    # optimizer = torch.optim.SGD(model.parameters(), lr=config.trainer.lr[0], weight_decay=1e-6, momentum=0.95)
     
-    # optimizer
-    optimizer = torch.optim.SGD(model.parameters(), lr=config.trainer.lr[0], weight_decay=1e-6, momentum=0.95)
-    
-    # scheduler
-    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
-                                              max_epochs=config.trainer.num_epochs)
+    # # scheduler
+    # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
+    #                                           max_epochs=config.trainer.num_epochs)
     
     # activation
     activation = nn.Sigmoid()
@@ -144,19 +184,19 @@ if __name__ == '__main__':
     
     # resume
     if config.trainer.resume.train:
-        model, optimizer, scheduler, start_num_epochs, train_step, val_step, best_score, best_metrics = resume_train_state(model, config.finetune.checkpoint + config.trainer.dataset, optimizer, scheduler, accelerator)
+        model, optimizers, schedulers, start_num_epochs, train_step, val_step, best_score, best_metrics = resume_train_state(model, config.finetune.checkpoint + config.trainer.dataset, optimizers, schedulers, accelerator)
     if config.trainer.resume.test:
         model = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/pytorch_model.bin", model, accelerator)
     
     # set in device
-    model, train_loader, val_loader, optimizer, scheduler = accelerator.prepare(model, train_loader, val_loader, optimizer, scheduler)
+    model, train_loader, val_loader, optimizers, schedulers = accelerator.prepare(model, train_loader, val_loader, optimizers, schedulers)
     
     # training
     if config.trainer.is_train == True:
         if config.trainer.is_train:
             for epoch in range(start_num_epochs, config.trainer.num_epochs):
                 # train
-                train_step = train_one_epoch(config, model, activation, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, train_step)
+                train_step = train_one_epoch(config, model, activation, train_loader, loss_functions, optimizers, schedulers, accelerator, epoch, train_step)
                 score, metrics, val_step = val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, val_step)
                 
                 # save best model

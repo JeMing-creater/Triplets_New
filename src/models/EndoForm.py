@@ -713,7 +713,7 @@ class EndoForm(nn.Module):
         super(EndoForm, self).__init__()
         self.backbone = pvt_v2_b2(in_chans=in_channels,embed_dims=dims)
         if os.path.isfile(model_dir):
-            model_dir = '/root/.cache/huggingface/forget/pvt_v2_b3.pth'
+            model_dir = model_dir
             save_model = torch.load(model_dir)
             model_dict = self.backbone.state_dict()
             state_dict = {k: v for k, v in save_model.items() if k in model_dict.keys()}
