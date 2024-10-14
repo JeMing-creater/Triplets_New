@@ -36,21 +36,30 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         
         tool, target, verb, triplet = model(img, txt.squeeze())
        
+        # tool_mask_loss = loss_functions['loss_fn_i'](tool, y1.float())
+        # target_mask_loss = loss_functions['loss_fn_v'](verb, y2.float())
+        # verb_mask_loss = loss_functions['loss_fn_t'](target, y3.float())
         tool_mask_loss = loss_functions['CrossEntropyLoss'](tool, y1.float())
         target_mask_loss = loss_functions['CrossEntropyLoss'](verb, y2.float())
         verb_mask_loss = loss_functions['CrossEntropyLoss'](target, y3.float())
         loss_ivt    = loss_functions['BCEWithLogitsLoss'](triplet, y4.float())  
         loss        =  tool_mask_loss + target_mask_loss + verb_mask_loss + loss_ivt 
+        
+        assert torch.isnan(loss).sum() == 0, print(loss)
+
 
         # lose backward
         accelerator.backward(loss)
-        
+        # 梯度裁剪
+        nn.utils.clip_grad_norm(model.parameters(), 1, norm_type=2)
+
+        # assert torch.isnan(model.mu).sum() == 0, print(model.mu)
         # optimizer.step
         optimizer.step()
         optimizer.zero_grad()
-        
+
         # model.zero_grad()
-        
+        # break
         # log
         accelerator.log({
             'Train/Total Loss': float(loss.item()),
@@ -62,9 +71,9 @@ def train_one_epoch(config, model, activation, train_loader, loss_functions, opt
         step += 1
         accelerator.print(
             f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{tool_mask_loss.item():.4f}] v: [{verb_mask_loss.item():.4f}] t: [{target_mask_loss.item():.4f}]', flush=True)
-        break
+        # break
     # learning rate schedule update
-    scheduler.step(epoch)
+    scheduler.step()
     # accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}] Epoch Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f}] v: [{loss_v.item():.4f}] t: [{loss_t.item():.4f}]', flush=True)    
 
     if config.trainer.val_training == True:
@@ -98,7 +107,7 @@ if __name__ == '__main__':
     tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
     instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator'] 
     target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'othertarget']       
-    verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'others']      
+    verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'otherverb']      
         
     all_list = instrument_list + target_list + verb_list
     tokenizer = add_tokens_tokenizer(tokenizer, all_list)
@@ -110,20 +119,25 @@ if __name__ == '__main__':
     model = PA(tokenizer)
     
     # optimizer
-    optimizer = optim_factory.create_optimizer_v2(model, opt=config.trainer.optimizer,
-                                                  weight_decay=config.trainer.weight_decay,
-                                                  lr=config.trainer.lr[0], betas=(0.9, 0.95))
-    
+    optimizer = torch.optim.SGD(model.parameters(), lr=config.trainer.lr[0], weight_decay=1e-6, momentum=0.95)
+    # optimizer = optim_factory.create_optimizer_v2(model, opt=config.trainer.optimizer,
+    #                                               weight_decay=config.trainer.weight_decay,
+    #                                               lr=config.trainer.lr[0], betas=(0.9, 0.95))
     # scheduler
-    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
-                                              max_epochs=config.trainer.num_epochs)
+    # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
+    #                                           max_epochs=config.trainer.num_epochs)
+    scheduler   =give_scheduler(config, optimizer, 0)
     
     # activation
     activation = nn.Sigmoid()
     
     # loss
+    tool_weight, verb_weight, target_weight = get_weight_balancing(config)
     loss_functions = {
         'CrossEntropyLoss': nn.CrossEntropyLoss(),
+        # 'loss_fn_i': nn.BCEWithLogitsLoss(pos_weight=torch.tensor(tool_weight).to(accelerator.device)),
+        # 'loss_fn_v': nn.BCEWithLogitsLoss(pos_weight=torch.tensor(verb_weight).to(accelerator.device)),
+        # 'loss_fn_t': nn.BCEWithLogitsLoss(pos_weight=torch.tensor(target_weight).to(accelerator.device)),
         'BCEWithLogitsLoss': nn.BCEWithLogitsLoss(),
     }
     
