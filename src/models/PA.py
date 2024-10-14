@@ -432,9 +432,9 @@ class PA(nn.Module):
         
         # self.instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator', 'null_instrument']  
         self.instrument_list = ['grasper', 'bipolar', 'hook', 'scissors', 'clipper', 'irrigator'] 
-        self.target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'othertarget']       
-        self.verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'otherverb']      
-      
+        self.target_list = ['gallbladder', 'cystic_plate', 'cystic_duct','cystic_artery', 'cystic_pedicle', 'blood_vessel', 'fluid', 'abdominal_wall_cavity', 'liver', 'adhesion', 'omentum', 'peritoneum', 'gut', 'specimen_bag', 'null_target']       
+        self.verb_list = ['grasp', 'retract', 'dissect', 'coagulate', 'clip', 'cut', 'aspirate', 'irrigate', 'pack', 'null_verb']      
+        
         # self.instrument_layer = Linear(self.model.config.hidden_size, len(self.instrument_list))
         # self.target_layer = Linear(self.model.config.hidden_size, len(self.target_list))
         # self.verb_layer = Linear(self.model.config.hidden_size, len(self.verb_list))
