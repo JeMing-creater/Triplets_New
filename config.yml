@@ -21,12 +21,12 @@ trainer:
   
 
 finetune:
-  checkpoint: EndoFormer
+  checkpoint: SAMMba
   # checkpoint: RIT
 
 dataset:
   T45:
-    batch_size: 24
+    batch_size: 8
     class_num: 100
     num_workers: 4
     kfold: 1
