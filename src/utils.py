@@ -35,7 +35,7 @@ def resume_train_state(model, checkpoint, optimizers, schedulers, accelerator):
         train_step = epoch_checkpoint['train_step']
         val_step = epoch_checkpoint['val_step']
         model = load_pretrain_model(base_path + "/pytorch_model.bin", model, accelerator)
-        if isinstance(optimizers, list):
+        if isinstance(optimizers, dict):
             optimizers = load_param(base_path, optimizers, accelerator, 'optimizer')
             schedulers = load_param(base_path, schedulers, accelerator, 'scheduler')
         else:
