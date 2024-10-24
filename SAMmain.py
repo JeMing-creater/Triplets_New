@@ -64,9 +64,13 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizers, sch
         # lose backward
         accelerator.backward(loss)
         
+        # out put gard = None layer
         for name, param in model.named_parameters():
             if param.grad is None:
                 print(name)
+        
+        # prevent grad explosion
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=20, norm_type=2)
         
         # optimizer.step
         step_params(optimizers)
