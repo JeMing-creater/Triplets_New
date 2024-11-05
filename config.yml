@@ -2,7 +2,9 @@ trainer:
   dataset: T45
   is_train: True
   warmup: 2
-  num_epochs: 100
+  num_epochs: 20
+  step2_epochs: 20
+  Tlr: [2e-4, 1e-3]
   lr: [0.1, 0.1, 0.1]
   sf: [0.1, 0.1, 0.1]
   g: [0.94, 0.95, 0.99]
@@ -12,7 +14,8 @@ trainer:
   top: 5
   optimizer: adamw
   decay_rate: 0.99
-  weight_decay: 0.05
+  # weight_decay: 0.05
+  weight_decay: 1e-6
   weight_decay_end: 0.04
   val_training: True
   resume: 
@@ -26,10 +29,12 @@ finetune:
 
 dataset:
   T45:
-    batch_size: 8
+    batch_size: 32
     class_num: 100
     num_workers: 4
     kfold: 1
+    threshold: 150
+    image_size: [224,224]
     data_dir: '/root/.cache/huggingface/forget/datasets/CholecT45/'
     text_path: '/workspace/Jeming/Triple_git/src/text-data/'  # change to adapt your path
     dataset_variant: 'cholect45-crossval'
@@ -37,17 +42,23 @@ dataset:
     persistent_workers: True
     drop_last: False
     weight_randa: True
-    data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    # data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    data_augmentations: ['original']
+    data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
   T50:
     batch_size: 32
     class_num: 100
     num_workers: 4
     kfold: 1
+    threshold: 150
+    image_size: [224,224]
     data_dir: '/root/.cache/huggingface/forget/datasets/CholecT50/'
     text_path: '/workspace/Jeming/Triple_git/src/text-data/'   # change to adapt your path
     m: 3
     weight_randa: False
-    data_augmentations: ['rot90', 'hflip', 'contrast', 'original']
+    # data_augmentations: ['rot90', 'hflip', 'contrast', 'original']
+    data_augmentations: ['original']
+    data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
     dataset_variant: 'cholect45-crossval'
   
     

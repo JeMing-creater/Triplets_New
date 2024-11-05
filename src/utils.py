@@ -51,6 +51,32 @@ def resume_train_state(model, checkpoint, optimizers, schedulers, accelerator):
         return model, optimizers, schedulers, 0, 0, 0, torch.nn.Parameter(torch.tensor([0.0]), requires_grad=False), {}
 
 
+def resume_train_state_d(model, checkpoint, optimizers, schedulers, accelerator, step='1'):
+    try:
+        base_path = f"{os.getcwd()}/model_store/{checkpoint}/checkpoint{step}"
+        epoch_checkpoint = torch.load(base_path + "/epoch.pth.tar", map_location=accelerator.device)
+        best_score = epoch_checkpoint['best_score']
+        best_metrics = epoch_checkpoint['best_metrics']
+        starting_epoch = epoch_checkpoint['epoch'] + 1
+        train_step = epoch_checkpoint['train_step']
+        val_step = epoch_checkpoint['val_step']
+        model = load_pretrain_model(base_path + "/checkpoint_model.bin", model, accelerator)
+        if isinstance(optimizers, dict):
+            optimizers = load_param(base_path, optimizers, accelerator, 'optimizer')
+            schedulers = load_param(base_path, schedulers, accelerator, 'scheduler')
+        else:
+            optimizers.load_state_dict(torch.load(base_path + "/checkpoint_optimizer.bin"))
+            schedulers.load_state_dict(torch.load(base_path + "/checkpoint_scheduler.bin"))
+        
+        accelerator.print(f'Loading training state successfully! Start training from {starting_epoch}, Best score: {best_score}')
+        
+        return model, optimizers, schedulers, starting_epoch, train_step, val_step, best_score, best_metrics
+    except Exception as e:
+        accelerator.print(e)
+        accelerator.print(f'Failed to load training state!')
+        return model, optimizers, schedulers, 0, 0, 0, torch.nn.Parameter(torch.tensor([0.0]), requires_grad=False), {}
+
+
 def load_pretrain_model(pretrain_path: str, model: nn.Module, accelerator: Accelerator):
     try:
         state_dict = load_model_dict(pretrain_path)
@@ -284,3 +310,17 @@ def add_tokens_tokenizer(tokenizer, all_list):
     print('Now we have added', num_added_toks, 'tokens')
     return tokenizer
 
+# Focal Loss 定义
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=None, gamma=2.0):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha if alpha is not None else torch.tensor(1.0)
+
+    def forward(self, inputs, targets):
+        BCE_loss = nn.functional.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+        pt = torch.exp(-BCE_loss) # 计算 p_t，即预测的概率
+        alpha = self.alpha.to(inputs.device)
+        alpha_factor = alpha * targets + (1 - alpha) * (1 - targets)
+        F_loss = alpha_factor * (1 - pt) ** self.gamma * BCE_loss #计算Focal Loss
+        return F_loss.mean()
