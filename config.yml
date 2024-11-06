@@ -4,6 +4,8 @@ trainer:
   warmup: 2
   num_epochs: 20
   step2_epochs: 20
+  ddpm_num_steps: 1000
+  alpthe: 0.5
   Tlr: [2e-4, 1e-3]
   lr: [0.1, 0.1, 0.1]
   sf: [0.1, 0.1, 0.1]
@@ -24,12 +26,12 @@ trainer:
   
 
 finetune:
-  checkpoint: SAMMba
+  checkpoint: Swin
   # checkpoint: RIT
 
 dataset:
   T45:
-    batch_size: 32
+    batch_size: 8
     class_num: 100
     num_workers: 4
     kfold: 1
@@ -42,9 +44,9 @@ dataset:
     persistent_workers: True
     drop_last: False
     weight_randa: True
-    # data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
-    data_augmentations: ['original']
-    data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    # data_augmentations: ['original']
+    # data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
   T50:
     batch_size: 32
     class_num: 100

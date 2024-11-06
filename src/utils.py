@@ -60,13 +60,13 @@ def resume_train_state_d(model, checkpoint, optimizers, schedulers, accelerator,
         starting_epoch = epoch_checkpoint['epoch'] + 1
         train_step = epoch_checkpoint['train_step']
         val_step = epoch_checkpoint['val_step']
-        model = load_pretrain_model(base_path + "/checkpoint_model.bin", model, accelerator)
+        model = load_pretrain_model(base_path + "/pytorch_model.bin", model, accelerator)
         if isinstance(optimizers, dict):
             optimizers = load_param(base_path, optimizers, accelerator, 'optimizer')
             schedulers = load_param(base_path, schedulers, accelerator, 'scheduler')
         else:
-            optimizers.load_state_dict(torch.load(base_path + "/checkpoint_optimizer.bin"))
-            schedulers.load_state_dict(torch.load(base_path + "/checkpoint_scheduler.bin"))
+            optimizers.load_state_dict(torch.load(base_path + "/optimizer.bin"))
+            schedulers.load_state_dict(torch.load(base_path + "/scheduler.bin"))
         
         accelerator.print(f'Loading training state successfully! Start training from {starting_epoch}, Best score: {best_score}')
         
@@ -309,6 +309,38 @@ def add_tokens_tokenizer(tokenizer, all_list):
     num_added_toks = tokenizer.add_tokens(add)
     print('Now we have added', num_added_toks, 'tokens')
     return tokenizer
+
+def corrupt(x, amount):
+  """Corrupt the input `x` by mixing it with noise according to `amount`"""
+ 
+  #print(amount)
+ 
+  noise = torch.rand_like(x)
+ 
+  #print(noise)
+ 
+  amount = amount.view(-1, 1, 1, 1) # Sort shape so broadcasting works
+ 
+  #print(amount)
+ 
+  return x*(1-amount) + noise*amount
+
+
+def _extract_into_tensor(arr, timesteps, broadcast_shape):
+    """
+    Extract values from a 1-D numpy array for a batch of indices.
+    :param arr: the 1-D numpy array.
+    :param timesteps: a tensor of indices into the array to extract.
+    :param broadcast_shape: a larger shape of K dimensions with the batch
+                            dimension equal to the length of timesteps.
+    :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
+    """
+    if not isinstance(arr, torch.Tensor):
+        arr = torch.from_numpy(arr)
+    res = arr[timesteps].float().to(timesteps.device)
+    while len(res.shape) < len(broadcast_shape):
+        res = res[..., None]
+    return res.expand(broadcast_shape)
 
 # Focal Loss 定义
 class FocalLoss(nn.Module):
