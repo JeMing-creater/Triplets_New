@@ -79,7 +79,7 @@ class CholecT45():
         trainform_s, trainform, testform = self.transform()
 
         self.build_train_dataset(trainform, trainform_s)
-        self.build_val_dataset(trainform,trainform_s)
+        self.build_val_dataset(trainform)
         self.build_test_dataset(testform)
 
     def list_dataset_variants(self):
@@ -137,7 +137,7 @@ class CholecT45():
     def build_train_dataset(self, transform, transform_s):
         iterable_dataset = []
         for video in self.train_records:
-            dataset = T45(img_dir=os.path.join(self.dataset_dir, 'data', video),
+            dataset = T45_s(img_dir=os.path.join(self.dataset_dir, 'data', video),
                           triplet_file=os.path.join(self.dataset_dir, 'triplet', '{}.txt'.format(video)),
                           tool_file=os.path.join(self.dataset_dir, 'instrument', '{}.txt'.format(video)),
                           verb_file=os.path.join(self.dataset_dir, 'verb', '{}.txt'.format(video)),
@@ -149,7 +149,7 @@ class CholecT45():
             iterable_dataset.append(dataset)
         self.train_dataset = ConcatDataset(iterable_dataset)  # 从列表变成一个数据集对象
 
-    def build_val_dataset(self, transform,transform_s):
+    def build_val_dataset(self, transform):
         iterable_dataset = []
         for video in self.val_records:
             dataset = T45(img_dir=os.path.join(self.dataset_dir, 'data', video),
@@ -157,9 +157,7 @@ class CholecT45():
                           tool_file=os.path.join(self.dataset_dir, 'instrument', '{}.txt'.format(video)),
                           verb_file=os.path.join(self.dataset_dir, 'verb', '{}.txt'.format(video)),
                           target_file=os.path.join(self.dataset_dir, 'target', '{}.txt'.format(video)),
-                          threshold=self.threshold,
-                          transform=transform,
-                          transform_s=transform_s)
+                          transform=transform)
             iterable_dataset.append(dataset)
         self.val_dataset = ConcatDataset(iterable_dataset)
 
@@ -171,7 +169,6 @@ class CholecT45():
                           tool_file=os.path.join(self.dataset_dir, 'instrument', '{}.txt'.format(video)),
                           verb_file=os.path.join(self.dataset_dir, 'verb', '{}.txt'.format(video)),
                           target_file=os.path.join(self.dataset_dir, 'target', '{}.txt'.format(video)),
-                          threshold=self.threshold,
                           transform=transform)
             iterable_dataset.append(dataset)
         self.test_dataset = iterable_dataset
@@ -179,8 +176,42 @@ class CholecT45():
     def build(self):
         return (self.train_dataset, self.val_dataset, self.test_dataset)
 
-
 class T45(Dataset):
+    def __init__(self, img_dir, triplet_file, tool_file, verb_file, target_file, transform=None, target_transform=None):
+        self.triplet_labels = np.loadtxt(triplet_file, dtype=int, delimiter=',')
+        self.tool_labels = np.loadtxt(tool_file, dtype=int, delimiter=',')
+        self.verb_labels = np.loadtxt(verb_file, dtype=int, delimiter=',')
+        self.target_labels = np.loadtxt(target_file, dtype=int, delimiter=',')
+        self.img_dir = img_dir
+        self.transform = transform
+        self.target_transform = target_transform
+
+    def __len__(self):
+        return len(self.triplet_labels)
+
+    def __getitem__(self, index):
+        triplet_label = self.triplet_labels[index, 1:]
+        tool_label = self.tool_labels[index, 1:]
+        verb_label = self.verb_labels[index, 1:]
+        target_label = self.target_labels[index, 1:]
+        basename = "{}.png".format(str(self.triplet_labels[index, 0]).zfill(6))#从 triplet_labels 中获取当前样本的 ID（在第一列），将其转换为字符串，确保它是 6 位数字，并用零填充。
+        img_path = os.path.join(self.img_dir, basename)
+
+        try:
+            image = Image.open(img_path)
+            if self.transform:
+                image = self.transform(image)
+            if self.target_transform:
+                triplet_label = self.target_transform(triplet_label)
+            # print(f"Success: {img_path}")
+        except Exception as e:
+            # print(f"Fail: {img_path} - {e}")
+            # Handle the failure by creating a blank image or skipping
+            image = Image.new('RGB', (256, 448), color=(255, 255, 255))  # Use a blank image as a placeholder
+
+        return image, (tool_label, verb_label, target_label, triplet_label)
+
+class T45_s(Dataset):
     def __init__(self, img_dir, triplet_file, tool_file, verb_file, target_file, threshold, transform=None,
                  transform_s=None, target_transform=None):
         self.triplet_labels = np.loadtxt(triplet_file, dtype=int, delimiter=',')
