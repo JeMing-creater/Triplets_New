@@ -125,7 +125,8 @@ def PA_val(config, model, dataloader, activation, step=0, train=False):
     
     return metrics, step
 
-def Trip_val(config, model, dataloader, activation, step=0, train=False, train_step='1'):
+
+def Trip_val(config, model, dataloader, activation, step=0, train=False):
     model.eval()
     data_choose = config.trainer.dataset
     if data_choose == 'T45':
@@ -137,17 +138,19 @@ def Trip_val(config, model, dataloader, activation, step=0, train=False, train_s
     
     
     if train == False:
-        data_set = 'Val' + train_step
+        data_set = 'Val' 
     else:
-        data_set = 'Train' + train_step
+        data_set = 'Train' 
     
-    for _, (img, (_, _, _, y)) in enumerate(dataloader):
+    # for _, (img, (_, _, _, y)) in enumerate(dataloader):
+    for _, (img, (_, _, _, y)) in enumerate(dataloader):    
         if config.trainer.dataset == 'T50':
             b, m, c, h, w = img.size()
             img = img.view(-1, c, h, w)
         # _, _, _, triplet = model(img)
         output = model(img)
         triplet = output[:, :100]
+        # triplet = output[:, :100]
         # tool = output[:, 100:106]
         # verb = output[:, 106:116]
         # target = output[:, 116:]
