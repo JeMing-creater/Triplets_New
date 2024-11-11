@@ -23,7 +23,7 @@ trainer:
   resume: 
     train: True
     test: False
-  
+
 
 finetune:
   checkpoint: Swin_O
@@ -44,9 +44,9 @@ dataset:
     persistent_workers: True
     drop_last: False
     weight_randa: True
-    data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
-    # data_augmentations: ['original']
-    # data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    #data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    data_augmentations: ['original']
+    data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
   T50:
     batch_size: 32
     class_num: 100
