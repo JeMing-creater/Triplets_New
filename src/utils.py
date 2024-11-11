@@ -276,6 +276,18 @@ def get_weight_balancing(config):
 
     return tool_weight, verb_weight, target_weight
 
+def get_focal_weight_balancing(config):
+    dataset_choose = config.trainer.dataset
+    if dataset_choose == 'T45':
+        config = config.dataset.T45
+    elif dataset_choose == 'T50':
+        config = config.dataset.T50
+    tool_weight     = [0.2, 0.6, 0.3, 0.8, 0.7, 0.65]
+    verb_weight     = [0.3, 0.1, 0.2, 0.5, 0.6, 0.7, 0.6, 0.8, 0.9, 0.4]
+    target_weight   = [0.1, 0.55, 0.4, 0.5, 0.4, 0.85, 0.75, 0.7, 0.3, 0.8, 0.35, 0.65, 0.7, 0.45, 0.4]
+    return tool_weight, verb_weight, target_weight
+        
+
 def load_param(base_path, param_dict, accelerator, type='optimizer'):
     num = 0
     for key in param_dict.keys():

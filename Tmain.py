@@ -305,7 +305,9 @@ def Step2(config, netC, netG, noise_scheduler, activation, train_loader, val_loa
 def Step3(config, netC, netG, activation, train_loader, val_loader, accelerator):
     optimizer, scheduler, loss_functions = give_train_setting(config, netC, step=3)
     netC = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/step1/pytorch_model.bin", netC, accelerator)
-    netG = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/step2/pytorch_model_1.bin", netG, accelerator)
+    netG = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/step2/pytorch_model_2.bin", netG, accelerator)
+    netC, netG, train_loader, val_loader, optimizer, scheduler = accelerator.prepare(netC, netG, train_loader, val_loader, optimizer, scheduler)
+
     # training setting
     train_step = 0
     val_step = 0
@@ -319,8 +321,11 @@ def Step3(config, netC, netG, activation, train_loader, val_loader, accelerator)
         netG.eval()
         for batch, (img, (y1, y2, y3, y4)) in enumerate(train_loader):
             noise = torch.randn(img.shape).to(img.device)
-            
-            pred = netG(noise, 0).sample
+            bsz = img.size()[0]
+            timesteps = torch.randint(
+                0, noise_scheduler.config.num_train_timesteps, (bsz,), device=img.device
+            ).long()
+            pred = netG(noise, timesteps).sample
             input = torch.cat((img, pred), dim=0)
             y1 = torch.cat((y1, y1), dim=0)
             y2 = torch.cat((y2, y2), dim=0)
@@ -452,6 +457,6 @@ if __name__ == '__main__':
         )
     
     # setp1
-    Step1(config, netC, activation, train_loader, val_loader, accelerator)
-    Step2(config, netC, netG, noise_scheduler, activation, train_loader, val_loader, accelerator)
+    # Step1(config, netC, activation, train_loader, val_loader, accelerator)
+    # Step2(config, netC, netG, noise_scheduler, activation, train_loader, val_loader, accelerator)
     Step3(config, netC, netG, activation, train_loader, val_loader, accelerator)
