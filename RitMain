@@ -27,6 +27,7 @@ from src.models.RIT import RiT
 from src.models.rendezvous import Rendezvous
 from src.models.RIT import RiT
 
+
 # config setting
 config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
 
