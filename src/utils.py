@@ -84,9 +84,21 @@ def load_pretrain_model(pretrain_path: str, model: nn.Module, accelerator: Accel
         accelerator.print(f'Successfully loaded the training model！')
         return model
     except Exception as e:
-        accelerator.print(e)
-        accelerator.print(f'Failed to load the training model！')
-        return model
+        try:
+            state_dict = load_model_dict(pretrain_path)
+            accelerator.print(f'First try Failed to load the training model！')
+            accelerator.print(e)
+            new_state_dict = {}
+            for key in state_dict.keys():
+                new_state_dict[key.replace('module.', '')] = state_dict[key]
+            model.load_state_dict(new_state_dict)
+            accelerator.print(f'Second try Successfully loaded the training model！')
+            return model
+        except Exception as e:
+            model.load_state_dict(new_state_dict)
+            accelerator.print(e)
+            accelerator.print(f'Failed to load the training model！')
+            return model
 
 
 

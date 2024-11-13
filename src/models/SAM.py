@@ -180,6 +180,7 @@ class CrossAttentionModule(nn.Module):
         
         return output
 
+
 class Projection(nn.Module):
     def __init__(self, num_tool=6, num_verb=10, num_target=15, num_triplet=100, out_depth=128, d_state = 16, d_conv = 4, expand = 2, num_slices=4, drop_rate=0.3):
         super(Projection, self).__init__()

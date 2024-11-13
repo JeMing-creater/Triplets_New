@@ -43,6 +43,7 @@ from src.optimizer import LinearWarmupCosineAnnealingLR, CosineAnnealingWarmRest
 from src.models.rendezvous import Rendezvous
 from src.models.RIT import RiT
 from src.models.Swin import TripletModel
+from src.models.MambaOnly import TriBase
 # from src.models.Mutmodel import TripletModel, CholecT45
 config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
 
@@ -138,7 +139,7 @@ if __name__ == '__main__':
     activation = nn.Sigmoid()
     
     # model
-    model = TripletModel(model_name='swin_base_patch4_window7_224')
+    model = TriBase()
     
     # load dataset
     train_loader, val_loader, test_loader = give_dataset(config)
