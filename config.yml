@@ -3,10 +3,12 @@ trainer:
   is_train: True
   warmup: 2
   num_epochs: 20
+  fuss_epochs: 150
   step2_epochs: 20
   ddpm_num_steps: 1000
   alpthe: 0.5
   Tlr: [2e-4, 1e-3]
+  Flr: [1e-5, 2e-4]
   lr: [0.1, 0.1, 0.1]
   sf: [0.1, 0.1, 0.1]
   g: [0.94, 0.95, 0.99]
@@ -26,8 +28,9 @@ trainer:
 
 
 finetune:
-  checkpoint: Swin_O
-  # checkpoint: RIT
+  # checkpoint: MambaOnly
+  checkpoint: MuData
+  
 
 dataset:
   T45:
