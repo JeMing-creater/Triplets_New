@@ -41,7 +41,7 @@ from src.eval import Trip_T_val as val
 from src.optimizer import LinearWarmupCosineAnnealingLR, CosineAnnealingWarmRestarts
 
 # model
-from src.models.generate.g import FussionModel, CholecT45, add_tokens_tokenizer, get_all_list, labels
+from src.models.G_F import FussionModel, CholecT45, add_tokens_tokenizer, get_all_list, labels
 from src.models.Swin import TripletModel
 from loss import *
 
