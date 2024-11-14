@@ -47,9 +47,15 @@ from src.models.MambaOnly import TriBase
 # from src.models.Mutmodel import TripletModel, CholecT45
 config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
 
-def train_one_epoch(config, model, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, step):
+def train_one_epoch(config, model, train_loader, loss_functions, optimizers, schedulers, accelerator, epoch, step):
     # train
     model.train()
+    a_loss_to = 0
+    a_loss_i = 0
+    a_loss_v = 0
+    a_loss_t = 0
+    a_loss_ivt = 0
+    count = 0
     for batch, (img, (y1, y2, y3, y4)) in enumerate(train_loader):
         # output 4 result
         if config.trainer.dataset == 'T50':
@@ -57,6 +63,11 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizer, sche
             img = img.view(-1, c, h, w)
         
         output = model(img)
+        # _, logit_i  = tool
+        # _, logit_v  = verb
+        # _, logit_t  = target
+        # logit_ivt   = triplet
+        
         logit_ivt = output[:, :100]
         logit_i = output[:, 100:106]
         logit_v = output[:, 106:116]
@@ -67,47 +78,58 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizer, sche
             logit_v   = logit_v.view(b, m, -1)[:, -1, :]
             logit_t   = logit_t.view(b, m, -1)[:, -1, :]
             logit_ivt = logit_ivt.view(b, m, -1)[:, -1, :]
-        
-        # class loss             
-        loss_i       = loss_functions['loss_fn_i'](logit_i, y1.float())
-        loss_v       = loss_functions['loss_fn_v'](logit_v, y2.float())
-        loss_t       = loss_functions['loss_fn_t'](logit_t, y3.float())
-        loss_ivt     = loss_functions['loss_fn_ivt'](logit_ivt, y4.float())  
+                        
+        loss_i      = loss_functions['loss_fn_i'](logit_i, y1.float())
+        loss_v      = loss_functions['loss_fn_v'](logit_v, y2.float())
+        loss_t      = loss_functions['loss_fn_t'](logit_t, y3.float())
+        loss_ivt    = loss_functions['loss_fn_ivt'](logit_ivt, y4.float())  
         focal_loss_i = loss_functions['focal_loss_i'](logit_i, y1.float())
         focal_loss_v = loss_functions['focal_loss_v'](logit_v, y2.float())
         focal_loss_t = loss_functions['focal_loss_t'](logit_t, y3.float())
         focal_loss   = focal_loss_i + focal_loss_v + focal_loss_t
-        
-        # total loss
-        # loss         = (loss_i) + (loss_v) + (loss_t) + loss_ivt + focal_loss + text_loss
-        loss = (loss_i) + (loss_v) + (loss_t) + loss_ivt + focal_loss
+        loss        = (loss_i) + (loss_v) + (loss_t) + loss_ivt + focal_loss
         
         # lose backward
         accelerator.backward(loss)
         
+        # out put gard = None layer
+        for name, param in model.named_parameters():
+            if param.grad is None:
+                print(name)
+        
+        # prevent grad explosion
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=20, norm_type=2)
+        
         # optimizer.step
-        optimizer.step()
+        step_params(optimizers)
         
         model.zero_grad()
         
         # log
         accelerator.log({
             'Train/Total Loss': float(loss.item()),
-            # 'Train/text_loss': float(text_loss.item()), 
             'Train/loss_i': float(loss_i.item()),
             'Train/loss_v': float(loss_v.item()),
             'Train/loss_t': float(loss_t.item()),
+            'Train/loss_ivt': float(loss_ivt.item()),
             'Train/focal_loss_i': float(focal_loss_i.item()),
             'Train/focal_loss_v': float(focal_loss_v.item()),
             'Train/focal_loss_t': float(focal_loss_t.item()),
-            'Train/loss_ivt': float(loss_ivt.item()),
+            'Train/focal_loss': float(focal_loss.item())
         }, step=step)
         step += 1
         accelerator.print(
-                f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Training Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}]  i: [{loss_i.item():.4f}, {focal_loss_i.item():.4f}] v: [{loss_v.item():.4f}, {focal_loss_v.item():.4f}] t: [{loss_t.item():.4f}, {focal_loss_t.item():.4f}]', flush=True)
+            f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f},{focal_loss_i.item():.4f}] v: [{loss_v.item():.4f},{focal_loss_v.item():.4f}] t: [{loss_t.item():.4f},{focal_loss_t.item():.4f}]', flush=True)
+        count += 1
+        a_loss_to += loss.item()
+        a_loss_i += loss_i.item()
+        a_loss_v += loss_v.item()
+        a_loss_t += loss_t.item()
+        a_loss_ivt += loss.item()
     # learning rate schedule update
-    scheduler.step()
-    
+    step_params(schedulers)
+    accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}] Epoch Avg Losses => total:[{a_loss_to/count:.4f}] ivt: [{a_loss_ivt/count:.4f}] i: [{a_loss_i/count:.4f}] v: [{a_loss_v/count:.4f}] t: [{a_loss_t/count:.4f}]', flush=True)    
+
     if config.trainer.val_training == True:
         metrics, _ = val(config, model, train_loader, activation, step=-1, train=True)
         accelerator.log(metrics, step=epoch)
@@ -145,23 +167,41 @@ if __name__ == '__main__':
     train_loader, val_loader, test_loader = give_dataset(config)
     
     # training tools
-    optimizer = Adam(
-            model.parameters(),
-            lr=float(config.trainer.Tlr[0]),
-            weight_decay=float(config.trainer.weight_decay),
-            amsgrad=False,
-    )
-    # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
-    #                                           max_epochs=config.trainer.num_epochs,
-    #                                           eta_min=2e-5,
-    #                                           last_epoch=-1)
-    scheduler = CosineAnnealingWarmRestarts(
-            optimizer,
-            T_0=(config.trainer.num_epochs +1),
-            T_mult=1,
-            eta_min=2e-5,
-            last_epoch=-1,
-        )
+    params1, params2, params3 = [], [], []
+    for key, value in dict(model.named_parameters()).items():
+        if value.requires_grad:
+            if 'base_model' in key:
+                params1 += [{'params':[value]}]
+            elif 'cagam' in key:
+                params2 += [{'params':[value]}]
+            elif 'decoder' in key or 'bottleneck' in key:
+                params3 += [{'params':[value]}]
+            else:
+                print("---- keys missed ------")
+                print(key)
+    
+    opt_dict = {'opt1': {'lr': config.trainer.lr[0], 'sf': config.trainer.sf[0], 'iters': config.trainer.ms[0], 'gamma':  config.trainer.g[0]},
+                'opt2': {'lr': config.trainer.lr[1], 'sf': config.trainer.sf[1], 'iters': config.trainer.ms[1], 'gamma':  config.trainer.g[1]},
+                'opt3': {'lr': config.trainer.lr[2], 'sf': config.trainer.sf[2], 'iters': config.trainer.ms[2], 'gamma':  config.trainer.g[2]}
+            }
+    
+    decay1 = 1e-6 
+    decay2 = 1e-6 
+    decay3 = 1e-6
+    mom_y  = 0.95
+    optimizers = {
+        'optimizer_i': torch.optim.SGD(params1, lr=opt_dict["opt1"]["lr"], weight_decay=decay1, momentum=mom_y),
+        'optimizer_vt': torch.optim.SGD(params2, lr=opt_dict["opt2"]["lr"], weight_decay=decay2, momentum=mom_y),
+        'optimizer_ivt': torch.optim.SGD(params3, lr=opt_dict["opt3"]["lr"], weight_decay=decay3, momentum=mom_y)
+        }
+    schedulers = {
+        'scheduler_i': give_scheduler(config, optimizers['optimizer_i'], 0),
+        'scheduler_vt': give_scheduler(config, optimizers['optimizer_vt'], 1),
+        'scheduler_ivt': give_scheduler(config, optimizers['optimizer_ivt'], 2),
+    }
+    
+    # activation
+    activation = nn.Sigmoid()
     
     tool_weight, verb_weight, target_weight = get_weight_balancing(config)
     alpha_instrument, alpha_verb, alpha_target = get_focal_weight_balancing(config)
@@ -184,32 +224,47 @@ if __name__ == '__main__':
     
     # resume
     if config.trainer.resume.train:
-        model, optimizer, scheduler, start_num_epochs, train_step, val_step, best_score, best_metrics = resume_train_state(model, config.finetune.checkpoint + config.trainer.dataset, optimizer, scheduler, accelerator)
+        model, optimizers, schedulers, start_num_epochs, train_step, val_step, best_score, best_metrics = resume_train_state(model, config.finetune.checkpoint + config.trainer.dataset, optimizers, schedulers, accelerator)
+    if config.trainer.resume.test:
+        model = load_pretrain_model(f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/pytorch_model.bin", model, accelerator)
     
-    # set in devices
-    model, train_loader, val_loader, optimizer, scheduler = accelerator.prepare(model, train_loader, val_loader, optimizer, scheduler)
+    # load in accelerator
+    optimizers = set_param_in_device(accelerator, optimizers)
+    schedulers = set_param_in_device(accelerator, schedulers)
+    # load in accelerator
+    model, train_loader, val_loader = accelerator.prepare(model, train_loader, val_loader)
     
-    for epoch in range(start_num_epochs, config.trainer.num_epochs):
-        # train
-        train_step = train_one_epoch(config, model, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, train_step)
-        score, metrics, val_step = val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, val_step)
-        
-        # save best model
-        if best_score.item() < score:
-            best_score = score
-            best_metrics = metrics
-            # two types of modeling saving
-            accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/")
-            torch.save(model.state_dict(), f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/model.pth")
-            torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
-                    f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/epoch.pth.tar')
+    # training
+    if config.trainer.is_train:
+        for epoch in range(start_num_epochs, config.trainer.num_epochs):
+            # train
+            train_step = train_one_epoch(config, model, train_loader, loss_functions, optimizers, schedulers, accelerator, epoch, train_step)
+            score, metrics, val_step = val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, val_step)
             
-        # print best score
-        accelerator.print(f'Now best APscore: {best_score}', flush=True)
-        
-        # checkout
-        accelerator.print('Checkout....')
-        accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint")
-        torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
-                    f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint/epoch.pth.tar')
-        accelerator.print('Checkout Over!')
+            # save best model
+            if best_score.item() < score:
+                best_score = score
+                best_metrics = metrics
+                # two types of modeling saving
+                accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/")
+                torch.save(model.state_dict(), f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/new/model.pth")
+                torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
+                        f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/best/epoch.pth.tar')
+                
+            # print best score
+            accelerator.print(f'Now best APscore: {best_score}', flush=True)
+            
+            # checkout
+            accelerator.print('Checkout....')
+            accelerator.save_state(output_dir=f"{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint")
+            torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
+                        f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint/epoch.pth.tar')
+            accelerator.print('Checkout Over!')
+    
+    # val
+    if config.trainer.is_train != True:
+        best_score, best_metrics, val_step = val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, val_step)
+     
+    accelerator.print(f"dice ivt score: {best_score}")
+    accelerator.print(f"other metrics : {best_metrics}")
+    sys.exit(1) 

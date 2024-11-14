@@ -126,7 +126,7 @@ if __name__ == '__main__':
     # scheduler
     # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
     #                                           max_epochs=config.trainer.num_epochs)
-    scheduler   =give_scheduler(config, optimizer, 0)
+    scheduler   = give_scheduler(config, optimizer, 0)
     
     # activation
     activation = nn.Sigmoid()
