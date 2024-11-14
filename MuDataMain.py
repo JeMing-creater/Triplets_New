@@ -195,8 +195,9 @@ def train_one_epoch(config, modelG, modelC, train_loader, loss_functions, optimi
     
     return step
 
-def val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, step):
-    metrics, step = val(config, model, val_loader, activation, step=step, train=False)
+
+def val_one_epoch(config, modelC, modelG, val_loader, loss_functions, activation, epoch, step):
+    metrics, step = val(config, modelC, modelG, val_loader, activation, step=step, train=False)
     i_score = metrics['Val/I']
     t_score = metrics['Val/T']
     v_score = metrics['Val/V']
@@ -307,7 +308,7 @@ if __name__ == '__main__':
     
     for epoch in range(start_num_epochs, config.trainer.num_epochs):
         train_step = train_one_epoch(config, modelG, modelC, train_loader, loss_functions, optimizerC, schedulerC, accelerator, epoch, train_step)
-        score, metrics, val_step = val_one_epoch(config, modelC, val_loader, loss_functions, activation, epoch, val_step)
+        score, metrics, val_step = val_one_epoch(config, modelG, modelC, val_loader, loss_functions, activation, epoch, val_step)
         
         # save best model
         if best_score.item() < score:

@@ -195,8 +195,9 @@ def Trip_val(config, model, dataloader, activation, step=0, train=False):
     
     return metrics, step
 
-def Trip_T_val(config, model, dataloader, activation, step=0, train=False):
-    model.eval()
+def Trip_T_val(config, modelG, modelC, dataloader, activation, step=0, train=False):
+    modelC.eval()
+    modelG.eval()
     data_choose = config.trainer.dataset
     if data_choose == 'T45':
         class_num = config.dataset.T45.class_num
@@ -212,12 +213,14 @@ def Trip_T_val(config, model, dataloader, activation, step=0, train=False):
         data_set = 'Train' 
     
     # for _, (img, (_, _, _, y)) in enumerate(dataloader):
-    for _, (img, _, (_, _, _, y)) in enumerate(dataloader):    
+    for _, (img, text, (_, _, _, y)) in enumerate(dataloader):    
         if config.trainer.dataset == 'T50':
             b, m, c, h, w = img.size()
             img = img.view(-1, c, h, w)
         # _, _, _, triplet = model(img)
-        output = model(img)
+        g_output  = modelG(img, text)
+        output    = modelC(g_output)
+        # output = model(img)
         triplet = output[:, :100]
         # triplet = output[:, :100]
         # tool = output[:, 100:106]
