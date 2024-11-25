@@ -380,3 +380,17 @@ class FocalLoss(nn.Module):
         alpha_factor = alpha * targets + (1 - alpha) * (1 - targets)
         F_loss = alpha_factor * (1 - pt) ** self.gamma * BCE_loss #计算Focal Loss
         return F_loss.mean()
+
+def freeze(module):
+        """
+        Freezes module's parameters.
+        """
+        for parameter in module.parameters():
+            parameter.requires_grad = False
+    
+def unfreeze(module):
+    """
+    Unfreezes module's parameters.
+    """
+    for parameter in module.parameters():
+        parameter.requires_grad = True

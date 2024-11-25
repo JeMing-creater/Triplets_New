@@ -2,7 +2,9 @@ trainer:
   dataset: T45
   is_train: True
   warmup: 2
-  num_epochs: 100
+  word_radio: 1.5  # 1.5==>37
+  pre_epochs: 5
+  num_epochs: 30
   fuss_epochs: 150
   step2_epochs: 20
   ddpm_num_steps: 1000
@@ -21,7 +23,7 @@ trainer:
   # weight_decay: 0.05
   weight_decay: 1e-6
   weight_decay_end: 0.04
-  val_training: True
+  val_training: False
   resume: 
     train: True
     test: False
@@ -30,12 +32,13 @@ trainer:
 finetune:
   # checkpoint: MambaOnly
   # checkpoint: MuData
-  checkpoint: Ma
+  checkpoint: CLIP2
+  # checkpoint: SR
   
 
 dataset:
   T45:
-    batch_size: 36
+    batch_size: 24
     class_num: 100
     num_workers: 4
     kfold: 1

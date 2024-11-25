@@ -1,5 +1,6 @@
 
 import os
+import re
 import torch
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 from transformers import Blip2Processor, Blip2ForConditionalGeneration
@@ -19,7 +20,11 @@ from flask import Flask, jsonify
 import torch.nn.functional as F
 from einops import rearrange
 from open_clip import create_model_from_pretrained, get_tokenizer, create_model_and_transforms
+from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Tokenizer, GPT2Model
 
+
+
+# 初始化模型和分词器
 labels = [
     'Grasper dissects cystic plate.',
     'Grasper dissects gallbladder.',
@@ -123,10 +128,232 @@ labels = [
     'Only irrigator.'
 ]
 
+class GenerateWord():
+    def __init__(self,dataset_dir, save_path = 'words'):
+        self.labels = [
+            'Grasper dissects cystic plate.',
+            'Grasper dissects gallbladder.',
+            'Grasper dissects omentum.',
+            'Grasper grasps cystic artery.',
+            'Grasper grasps cystic duct.',
+            'Grasper grasps cystic pedicle.',
+            'Grasper grasps cystic plate.',
+            'Grasper grasps gallbladder.',
+            'Grasper grasps gut.',
+            'Grasper grasps liver.',
+            'Grasper grasps omentum.',
+            'Grasper grasps peritoneum.',
+            'Grasper grasps specimen bag.',
+            'Grasper packs gallbladder.',
+            'Grasper retracts cystic duct.',
+            'Grasper retracts cystic pedicle.',
+            'Grasper retracts cystic plate.',
+            'Grasper retracts gallbladder.',
+            'Grasper retracts gut.',
+            'Grasper retracts liver.',
+            'Grasper retracts omentum.',
+            'Grasper retracts peritoneum.',
+            'Bipolar coagulates abdominal wall cavity.',
+            'Bipolar coagulates blood vessel.',
+            'Bipolar coagulates cystic artery.',
+            'Bipolar coagulates cystic duct.',
+            'Bipolar coagulates cystic pedicle.',
+            'Bipolar coagulates cystic plate.',
+            'Bipolar coagulates gallbladder.',
+            'Bipolar coagulates liver.',
+            'Bipolar coagulates omentum.',
+            'Bipolar coagulates peritoneum.',
+            'Bipolar dissects adhesion.',
+            'Bipolar dissects cystic artery.',
+            'Bipolar dissects cystic duct.',
+            'Bipolar dissects cystic plate.',
+            'Bipolar dissects gallbladder.',
+            'Bipolar dissects omentum.',
+            'Bipolar grasps cystic plate.',
+            'Bipolar grasps liver.',
+            'Bipolar grasps specimen bag.',
+            'Bipolar retracts cystic duct.',
+            'Bipolar retracts cystic pedicle.',
+            'Bipolar retracts gallbladder.',
+            'Bipolar retracts liver.',
+            'Bipolar retracts omentum.',
+            'Hook coagulates blood vessel.',
+            'Hook coagulates cystic artery.',
+            'Hook coagulates cystic duct.',
+            'Hook coagulates cystic pedicle.',
+            'Hook coagulates cystic plate.',
+            'Hook coagulates gallbladder.',
+            'Hook coagulates liver.',
+            'Hook coagulates omentum.',
+            'Hook cuts blood vessel.',
+            'Hook cuts peritoneum.',
+            'Hook dissects blood vessel.',
+            'Hook dissects cystic artery.',
+            'Hook dissects cystic duct.',
+            'Hook dissects cystic plate.',
+            'Hook dissects gallbladder.',
+            'Hook dissects omentum.',
+            'Hook dissects peritoneum.',
+            'Hook retracts gallbladder.',
+            'Hook retracts liver.',
+            'Scissors coagulate omentum.',
+            'Scissors cut adhesion.',
+            'Scissors cut blood vessel.',
+            'Scissors cut cystic artery.',
+            'Scissors cut cystic duct.',
+            'Scissors cut cystic plate.',
+            'Scissors cut liver.',
+            'Scissors cut omentum.',
+            'Scissors cut peritoneum.',
+            'Scissors dissect cystic plate.',
+            'Scissors dissect gallbladder.',
+            'Scissors dissect omentum.',
+            'Clipper clips blood vessel.',
+            'Clipper clips cystic artery.',
+            'Clipper clips cystic duct.',
+            'Clipper clips cystic pedicle.',
+            'Clipper clips cystic plate.',
+            'Irrigator aspirates fluid.',
+            'Irrigator dissects cystic duct.',
+            'Irrigator dissects cystic pedicle.',
+            'Irrigator dissects cystic plate.',
+            'Irrigator dissects gallbladder.',
+            'Irrigator dissects omentum.',
+            'Irrigator irrigates abdominal wall cavity.',
+            'Irrigator irrigates cystic pedicle.',
+            'Irrigator irrigates liver.',
+            'Irrigator retracts gallbladder.',
+            'Irrigator retracts liver.',
+            'Irrigator retracts omentum.',
+            'grasper.',
+            'bipolar.',
+            'hook.',
+            'scissors.',
+            'clipper.',
+            'irrigator.'
+        ]
+        self.dataset_dir = dataset_dir
+        self.model = AutoModelForCausalLM.from_pretrained(
+        "Qwen/Qwen1.5-7B-Chat",
+        torch_dtype="auto",
+        device_map=device
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen1.5-7B-Chat")
+        self.records = self.get_max_num()
+        self.save_path = dataset_dir + '/'+ save_path
+        self.create_path()
+    
+    def create_path(self):
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+            print(f"'{self.save_path}' have been created. ")
+        else:
+            print(f"'{self.save_path}' is exist.")
+    
+    def get_max_index(self, file_path):
+        max_index = -1  # 初始化最大索引为-1，假设文件中的索引从0开始
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                # 假设每行的格式是 "index text"
+                parts = line.strip().split(',', 1)  # 分割索引和文本
+                if len(parts) == 2 and parts[0].isdigit():  # 确保第一部分是数字
+                    index = int(parts[0])  # 将索引转换为整数
+                    if index > max_index:
+                        max_index = index  # 更新最大索引
+
+        return max_index
+    
+    def test_word_index(self, path, video):
+        triplet_file = os.path.join(self.dataset_dir, 'triplet', '{}.txt'.format(video))
+        triplet_labels = np.loadtxt(triplet_file, dtype=int, delimiter=',')
+        exist_data_max_index = self.get_max_index(path)
+        if exist_data_max_index == (len(triplet_labels)-1):
+            return True, exist_data_max_index
+        else:
+            return False, exist_data_max_index
+    
+    def crate_txt(self, path, video):
+        if os.path.exists(path):
+            flig, exist_data_max_index = self.test_word_index(path, video)
+            return flig, exist_data_max_index
+            
+        
+        # 创建一个新的TXT文件
+        with open(path, 'w') as file:
+            print(f"'{path}' have been created.")
+        
+    def get_max_num(self):
+        # 存储找到的文件夹编号
+        folder_all = []
+        
+        # 列出路径下的所有文件夹
+        for folder_name in os.listdir(self.dataset_dir+'/data/'):
+            folder_all.append(folder_name)
+            
+        return folder_all
+
+    def traversal_triplet(self, triplet_labels, save_txt_path, exist_data_max_index):
+        # labels = []
+        print(f'Start from {exist_data_max_index}')
+        for index in range(0, len(triplet_labels)):
+            if index <= exist_data_max_index:
+                continue
+            label = triplet_labels[index, 1:]
+            text_labels = [item for label, item in zip(label, self.labels) if label == 1]
+            
+            if text_labels == []:
+                text = 'The doctor has not taken any action at the moment.'
+            else:
+                add_text = ''
+                for l in text_labels:
+                    add_text = add_text + ' ' + l
+                add_text = add_text 
+                # prompt = f"I am describing a surgical picture of a gallbladder removal operation. Here are some specific actions in the picture: [{add_text}] Please help me understand and describe the entire content of the picture in one sentence."
+                # prompt = f"During the cholecystectomy, the doctor performed the following actions or simply held tools:\n{add_text}Please summarize the action text I provided in English, or just tell me what tools the doctor was using, in no more than 200 words, and without Chinese characters. "
+                prompt = f"During the cholecystectomy, the doctor is performing the following actions or juse holding up a tool: [{add_text}] Summarize the doctor's actions or state which tool the doctor is using in English. It is worth noting that if you are informed of actions and tool descriptions in more than one sentence, please help me summarize it into one sentence (no more than 200 words). If you are unable to understand the information I am sending, only reply to the text content within []"
+                messages = [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+                in_text = self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                model_inputs = self.tokenizer([in_text], return_tensors="pt").to(device)
+
+                generated_ids = self.model.generate(
+                    model_inputs.input_ids,
+                    max_new_tokens=512
+                )
+                generated_ids = [
+                    output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+                ]
+                text = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            
+            with open(save_txt_path, 'a', encoding='utf-8') as output_file:
+                # 逐行读取原始文件
+                output_file.write(f"{index},{text}\n")
+                
+            print(text)
+            # labels.append(text)
+        # return labels
+    
+    
+    def generate_word_save(self):
+         for video in self.records:
+             print(f'Generate {video} data!')
+             save_txt_path = self.save_path + f'/{video}.txt'
+             flig, exist_data_max_index = self.crate_txt(save_txt_path, video)
+             triplet_file = os.path.join(self.dataset_dir, 'triplet', '{}.txt'.format(video))
+             triplet_labels = np.loadtxt(triplet_file, dtype=int, delimiter=',')
+             if flig != True:
+                self.traversal_triplet(triplet_labels, save_txt_path, exist_data_max_index)
+             
 class CholecT45():
     def __init__(self,
                  tokenizer,
-                 dataset_dir, context_length=50, image_size=[224,224],
+                 dataset_dir, context_length=200, image_size=[224,224],
                  dataset_variant="cholect45-crossval",
                  test_fold=1,
                  augmentation_list=['original', 'vflip', 'hflip', 'contrast', 'rot90']):
@@ -228,6 +455,7 @@ class CholecT45():
         for video in self.train_records:
             dataset = T45(tokenizer=self.tokenizer,context_length = self.context_length,
                           img_dir=os.path.join(self.dataset_dir, 'data', video),
+                          words_file=os.path.join(self.dataset_dir, 'words', '{}.txt'.format(video)),
                           triplet_file=os.path.join(self.dataset_dir, 'triplet', '{}.txt'.format(video)),
                           tool_file=os.path.join(self.dataset_dir, 'instrument', '{}.txt'.format(video)),
                           verb_file=os.path.join(self.dataset_dir, 'verb', '{}.txt'.format(video)),
@@ -241,6 +469,7 @@ class CholecT45():
         for video in self.val_records:
             dataset = T45(tokenizer=self.tokenizer,context_length = self.context_length,
                           img_dir=os.path.join(self.dataset_dir, 'data', video),
+                          words_file=os.path.join(self.dataset_dir, 'words', '{}.txt'.format(video)),
                           triplet_file=os.path.join(self.dataset_dir, 'triplet', '{}.txt'.format(video)),
                           tool_file=os.path.join(self.dataset_dir, 'instrument', '{}.txt'.format(video)),
                           verb_file=os.path.join(self.dataset_dir, 'verb', '{}.txt'.format(video)),
@@ -254,6 +483,7 @@ class CholecT45():
         for video in self.test_records:
             dataset = T45( tokenizer=self.tokenizer,context_length = self.context_length,
                           img_dir=os.path.join(self.dataset_dir, 'data', video),
+                          words_file=os.path.join(self.dataset_dir, 'words', '{}.txt'.format(video)),
                           triplet_file=os.path.join(self.dataset_dir, 'triplet', '{}.txt'.format(video)),
                           tool_file=os.path.join(self.dataset_dir, 'instrument', '{}.txt'.format(video)),
                           verb_file=os.path.join(self.dataset_dir, 'verb', '{}.txt'.format(video)),
@@ -266,9 +496,10 @@ class CholecT45():
         return (self.train_dataset, self.val_dataset, self.test_dataset)
 
 class T45(Dataset):
-    def __init__(self, tokenizer, context_length, img_dir, triplet_file, tool_file, verb_file, target_file, transform=None, target_transform=None):
+    def __init__(self, tokenizer, context_length, img_dir, words_file, triplet_file, tool_file, verb_file, target_file, transform=None, target_transform=None):
         self.tokenizer = tokenizer
         self.context_length = context_length
+        self.words_labels = self.load_text_by_index(words_file)
         self.triplet_labels = np.loadtxt(triplet_file, dtype=int, delimiter=',')
         self.tool_labels = np.loadtxt(tool_file, dtype=int, delimiter=',')
         self.verb_labels = np.loadtxt(verb_file, dtype=int, delimiter=',')
@@ -276,109 +507,19 @@ class T45(Dataset):
         self.img_dir = img_dir
         self.transform = transform
         self.target_transform = target_transform
-        self.labels = [
-    'Grasper dissects cystic plate.',
-    'Grasper dissects gallbladder.',
-    'Grasper dissects omentum.',
-    'Grasper grasps cystic artery.',
-    'Grasper grasps cystic duct.',
-    'Grasper grasps cystic pedicle.',
-    'Grasper grasps cystic plate.',
-    'Grasper grasps gallbladder.',
-    'Grasper grasps gut.',
-    'Grasper grasps liver.',
-    'Grasper grasps omentum.',
-    'Grasper grasps peritoneum.',
-    'Grasper grasps specimen bag.',
-    'Grasper packs gallbladder.',
-    'Grasper retracts cystic duct.',
-    'Grasper retracts cystic pedicle.',
-    'Grasper retracts cystic plate.',
-    'Grasper retracts gallbladder.',
-    'Grasper retracts gut.',
-    'Grasper retracts liver.',
-    'Grasper retracts omentum.',
-    'Grasper retracts peritoneum.',
-    'Bipolar coagulates abdominal wall cavity.',
-    'Bipolar coagulates blood vessel.',
-    'Bipolar coagulates cystic artery.',
-    'Bipolar coagulates cystic duct.',
-    'Bipolar coagulates cystic pedicle.',
-    'Bipolar coagulates cystic plate.',
-    'Bipolar coagulates gallbladder.',
-    'Bipolar coagulates liver.',
-    'Bipolar coagulates omentum.',
-    'Bipolar coagulates peritoneum.',
-    'Bipolar dissects adhesion.',
-    'Bipolar dissects cystic artery.',
-    'Bipolar dissects cystic duct.',
-    'Bipolar dissects cystic plate.',
-    'Bipolar dissects gallbladder.',
-    'Bipolar dissects omentum.',
-    'Bipolar grasps cystic plate.',
-    'Bipolar grasps liver.',
-    'Bipolar grasps specimen bag.',
-    'Bipolar retracts cystic duct.',
-    'Bipolar retracts cystic pedicle.',
-    'Bipolar retracts gallbladder.',
-    'Bipolar retracts liver.',
-    'Bipolar retracts omentum.',
-    'Hook coagulates blood vessel.',
-    'Hook coagulates cystic artery.',
-    'Hook coagulates cystic duct.',
-    'Hook coagulates cystic pedicle.',
-    'Hook coagulates cystic plate.',
-    'Hook coagulates gallbladder.',
-    'Hook coagulates liver.',
-    'Hook coagulates omentum.',
-    'Hook cuts blood vessel.',
-    'Hook cuts peritoneum.',
-    'Hook dissects blood vessel.',
-    'Hook dissects cystic artery.',
-    'Hook dissects cystic duct.',
-    'Hook dissects cystic plate.',
-    'Hook dissects gallbladder.',
-    'Hook dissects omentum.',
-    'Hook dissects peritoneum.',
-    'Hook retracts gallbladder.',
-    'Hook retracts liver.',
-    'Scissors coagulate omentum.',
-    'Scissors cut adhesion.',
-    'Scissors cut blood vessel.',
-    'Scissors cut cystic artery.',
-    'Scissors cut cystic duct.',
-    'Scissors cut cystic plate.',
-    'Scissors cut liver.',
-    'Scissors cut omentum.',
-    'Scissors cut peritoneum.',
-    'Scissors dissect cystic plate.',
-    'Scissors dissect gallbladder.',
-    'Scissors dissect omentum.',
-    'Clipper clips blood vessel.',
-    'Clipper clips cystic artery.',
-    'Clipper clips cystic duct.',
-    'Clipper clips cystic pedicle.',
-    'Clipper clips cystic plate.',
-    'Irrigator aspirates fluid.',
-    'Irrigator dissects cystic duct.',
-    'Irrigator dissects cystic pedicle.',
-    'Irrigator dissects cystic plate.',
-    'Irrigator dissects gallbladder.',
-    'Irrigator dissects omentum.',
-    'Irrigator irrigates abdominal wall cavity.',
-    'Irrigator irrigates cystic pedicle.',
-    'Irrigator irrigates liver.',
-    'Irrigator retracts gallbladder.',
-    'Irrigator retracts liver.',
-    'Irrigator retracts omentum.',
-    'Only grasper.',
-    'Only bipolar.',
-    'Only hook.',
-    'Only scissors.',
-    'Only clipper.',
-    'Only irrigator.'
-]
-
+        
+    def load_text_by_index(self, file_path):
+        data = {}
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                # 分割每一行的索引和文本，假设它们之间用逗号分隔
+                parts = line.strip().split(',', 1)  # 分割一次，确保只分割出索引和文本
+                if len(parts) == 2 and parts[0].isdigit():  # 确保第一部分是数字
+                    index = int(parts[0])  # 将索引转换为整数
+                    text = parts[1]  # 获取文本
+                    data[index] = text
+        return data
+    
     def __len__(self):
         return len(self.triplet_labels)
 
@@ -390,23 +531,19 @@ class T45(Dataset):
     def __getitem__(self, index):
         # template = 'this is a photo of '
         triplet_label = self.triplet_labels[index, 1:]
-        text_labels = [item for label, item in zip(triplet_label, self.labels) if label == 1]
-        if text_labels == []:
-            text = 'A scenario with no tools or corresponding actions.'
-        else:
-            # for label in text_labels:
-            add_text = ''
-            for label in labels:
-                add_text = add_text + ' ' + label
-            add_text = add_text 
-            text = f'A laparoscopic cholecystectomy scenario with [{add_text}]'
+        # text_labels = [item for label, item in zip(triplet_label, self.labels) if label == 1]
+        # if text_labels == []:
+        #     text = 'A scenario with no tools or corresponding actions.'
+        # else:
+        #     # for label in text_labels:
+        #     add_text = ''
+        #     for label in text_labels:
+        #         add_text = add_text + ' ' + label
+        #     add_text = add_text 
+        #     text = f'A laparoscopic cholecystectomy scenario with [{add_text}]'
+        text = self.words_labels.get(index, None)
         
         texts = self.tokenizer(text, context_length=self.context_length)
-        # texts = processor(text=text, return_tensors="pt", padding="max_length", truncation=True, max_length=100)
-        # input_ids = texts['input_ids']
-        # attention_mask = texts['attention_mask']
-        # input_ids = input_ids.squeeze()
-        # attention_mask = attention_mask.squeeze()
         tool_label = self.tool_labels[index, 1:]
         verb_label = self.verb_labels[index, 1:]
         target_label = self.target_labels[index, 1:]
@@ -425,7 +562,7 @@ class T45(Dataset):
         texts = self.add_text(texts)
         
         return image, texts, (tool_label, verb_label, target_label, triplet_label)
-
+    
 def to_3d(x):
     return rearrange(x, 'b c h w -> b (h w) c')
 
@@ -648,20 +785,13 @@ def get_all_list(labels):
                 add_list.append(word.replace('.', ''))
     return add_list
 
+
 if __name__ == '__main__':
-    device = 'cuda:0'
+    device = 'cuda:7'
     
-    # tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    # model = TFGPT2LMHeadModel.from_pretrained('gpt2')
-    # input_text = f"Please help me generate a single complete caption of a laparoscopic cholecystectomy scenario with multiple action subjects: [{labels[0]} {labels[1]}]"
-    # input_ids = tokenizer.encode(input_text, return_tensors='tf')
-    # output_ids = model.generate(input_ids, max_length=100, num_return_sequences=1)
-    # output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-    # print(output_text)
-    # # 加载处理器和模型
-    # processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-    # model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b")
-    
+    # TODO: caption generation
+    # g = GenerateWord(dataset_dir='/root/.cache/huggingface/forget/datasets/CholecT45/')
+    # folder_all = g.generate_word_save()
     
     add_list = get_all_list(labels)
     
@@ -678,43 +808,15 @@ if __name__ == '__main__':
     
     train_dataset, val_dataset, test_dataset = dataset.build()
     
-    train_dataloader = DataLoader(train_dataset, batch_size=20, shuffle=True, prefetch_factor=3*20, num_workers=2, pin_memory=True, persistent_workers=True, drop_last=False)
-    val_dataloader   = DataLoader(val_dataset, batch_size=20, shuffle=False, prefetch_factor=3*20, num_workers=2, pin_memory=True, persistent_workers=True, drop_last=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=12, shuffle=True, prefetch_factor=3*12, num_workers=2, pin_memory=True, persistent_workers=True, drop_last=False)
+    val_dataloader   = DataLoader(val_dataset, batch_size=12, shuffle=False, prefetch_factor=3*12, num_workers=2, pin_memory=True, persistent_workers=True, drop_last=False)
     
     model = FussionModel().to(device)
     
     for batch, (images, texts, (y1, y2, y3, y4)) in enumerate(train_dataloader):
         images = images.to(device)
         texts  = texts.to(device)
+        print('images: ', images.shape)
+        print('texts: ', texts.shape)
         out = model(images, texts)
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        # print(input_ids.shape)
-        # print(attention_mask.shape)
-        
-    
-    # # 加载处理器和模型
-    # processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-    # model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b")
-
-    # text = f'A laparoscopic cholecystectomy scenario with [{labels[0]}, {labels[1]}]'
-    
-    # max_length = 100
-    
-    # inputs = processor(text=text, return_tensors="pt", padding="max_length", truncation=True, max_length=max_length)
-    
-    # inputs = inputs.to(device)
-    
-
-    
+        print('out: ', out.shape)
