@@ -413,8 +413,10 @@ def give_dataset(config):
                 augmentation_list=config.data_augmentations,
                 )
         train_dataset, val_dataset, test_dataset = dataset.build()
+        
         train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, prefetch_factor=3*config.batch_size, num_workers=config.num_workers, pin_memory=config.pin_memory, persistent_workers=config.persistent_workers, drop_last=config.drop_last)
         val_dataloader   = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False, prefetch_factor=3*config.batch_size, num_workers=config.num_workers, pin_memory=config.pin_memory, persistent_workers=config.persistent_workers, drop_last=config.drop_last)
+        
         
         # test data set is built per video, so load differently
         test_dataloaders = []

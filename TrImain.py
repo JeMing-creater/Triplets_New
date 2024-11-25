@@ -38,13 +38,18 @@ from src.utils import same_seeds, corrupt, _extract_into_tensor, Logger, get_foc
 from src.utils import resume_train_state
 from src.eval import Trip_val as val
 from src.optimizer import LinearWarmupCosineAnnealingLR, CosineAnnealingWarmRestarts
+from loss import *
 
 # model
 from src.models.rendezvous import Rendezvous
+# from src.models.MambaOnly import TriBase
+# from src.models.MO import TriBase
+from src.models.MO import TriBase
 from src.models.RIT import RiT
 from src.models.Swin import TripletModel
 # from src.models.Mutmodel import TripletModel, CholecT45
 config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
+
 
 def train_one_epoch(config, model, train_loader, loss_functions, optimizer, scheduler, accelerator, epoch, step):
     # train
@@ -125,6 +130,8 @@ def val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, 
     accelerator.log(metrics, step=epoch)
     return ivt_score, metrics, step
 
+ 
+
 if __name__ == '__main__':
     same_seeds(50)
     # log
@@ -138,22 +145,26 @@ if __name__ == '__main__':
     activation = nn.Sigmoid()
     
     # model
-    model = TripletModel(model_name='swin_base_patch4_window7_224')
+    # model = TripletModel(model_name='swin_base_patch4_window7_224')
+    model = TriBase()
+    
     
     # load dataset
     train_loader, val_loader, test_loader = give_dataset(config)
     
     # training tools
+    # optimizer = Adam(
+    #         model.parameters(),
+    #         lr=float(config.trainer.Tlr[0]),
+    #         weight_decay=float(config.trainer.weight_decay),
+    #         amsgrad=False,
+    # )
     optimizer = Adam(
             model.parameters(),
-            lr=float(config.trainer.Tlr[0]),
+            lr=0.001,
             weight_decay=float(config.trainer.weight_decay),
             amsgrad=False,
     )
-    # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.trainer.warmup,
-    #                                           max_epochs=config.trainer.num_epochs,
-    #                                           eta_min=2e-5,
-    #                                           last_epoch=-1)
     scheduler = CosineAnnealingWarmRestarts(
             optimizer,
             T_0=(config.trainer.num_epochs +1),

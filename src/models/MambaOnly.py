@@ -58,8 +58,11 @@ class MambaAttention(nn.Module):
         img_dims = x1.shape[2:]
         A = self.get_feature_m(x1)
         B = self.get_feature_m(x2)
+        
         dot_product = torch.matmul(A, B.transpose(-2, -1))
+        
         result = torch.matmul(dot_product, B)
+        
         result = result.transpose(-1, -2).reshape(batch_size, channel, *img_dims)
         result = self.bn(result)
         return result
@@ -243,7 +246,7 @@ class TriDecoder(nn.Module):
         return triplet
         
 class TriBase(nn.Module):
-    def __init__(self, in_channel = 3, num_tool=6, num_verb=10, num_target=15, num_triplet=100, d_state = 16, d_conv = 4, expand = 2, drop_rate=0.3, dim = [16, 32, 64, 128], num_slices = [64, 32, 16, 4], block_depth = [2, 2, 2, 2], block_layer = 8):
+    def __init__(self, in_channel = 3, num_tool=6, num_verb=10, num_target=15, num_triplet=100, d_state = 16, d_conv = 4, expand = 2, drop_rate=0.0, dim = [16, 32, 64, 128], num_slices = [64, 32, 16, 4], block_depth = [2, 2, 2, 2], block_layer = 8):
         super(TriBase, self).__init__()
         self.encoder = TriEncoder(in_channel = in_channel, num_tool=num_tool, num_verb=num_verb, num_target=num_target, d_state = d_state, d_conv = d_conv, expand = expand, drop_rate=drop_rate, dim = dim, num_slices = num_slices, block_depth = block_depth)
         self.decoder = TriDecoder(d_model=dim[-1], num_triplet=num_triplet, block_layer = block_layer, d_state = d_state, d_conv = d_conv, expand = expand, drop_rate=0.3, num_slices = num_slices[-1])
@@ -254,10 +257,35 @@ class TriBase(nn.Module):
         output  = torch.cat([triplet, tool, verb, target], dim=1)
         return output
 
+
+class TripletModel(nn.Module):
+    def __init__(self, model_name='swin_base_patch4_window7_224', class_num=131, pretrained=True):
+        super().__init__()
+
+        """
+        Models class to return swin transformer models
+        """
+
+        # Load the backbone
+        self.model = timm.create_model(model_name, pretrained=pretrained)
+
+
+        # Get the number features in final embedding
+        n_features = self.model.head.in_features
+
+        # Update the classification layer with our custom target size
+        self.model.head = nn.Linear(n_features, class_num)
+        print(self.model)
+        
+    def forward(self, x):
+        x = self.model(x)
+        return x
+
+
 if __name__ == '__main__':
     device = 'cuda:0'
     image = torch.randn(20, 3, 224, 224).to(device)
-    model = TriBase().to(device)
+    model = TripletModel().to(device)
     
     out = model(image)
     print(out.shape)

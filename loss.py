@@ -28,8 +28,6 @@ class BCE_loss():
                         truelabel[validindex[0], validindex[1], :, validindex[2]])
         return loss
 
-
-
 class MSE_loss():
     def __init__(self):
         super().__init__()
@@ -64,6 +62,7 @@ def CE_Loss(inputs, target, num_classes=0):
 
     CE_loss  = nn.CrossEntropyLoss( ignore_index=num_classes)(temp_inputs, temp_target)
     return CE_loss
+
 class Fusionloss(nn.Module):
     def __init__(self,coeff_int=1,coeff_grad=10,in_max=True, device='cuda'):
         super(Fusionloss, self).__init__()
@@ -137,7 +136,6 @@ class Sobelxy(nn.Module):
         sobely=F.conv2d(x, self.weighty, padding=1)
         return torch.abs(sobelx)+torch.abs(sobely)
 
-
 def _mef_ssim(X, Ys, window, ws, denom_g, denom_l, C1, C2, is_lum=False, full=False):
     K, C, H, W = list(Ys.size())
 
@@ -185,7 +183,6 @@ def _mef_ssim(X, Ys, window, ws, denom_g, denom_l, C1, C2, is_lum=False, full=Fa
     q = qmap.mean()
 
     return q
-
 
 
 class MEFSSIM(torch.nn.Module):
@@ -292,3 +289,54 @@ class LpLssimLossweight(nn.Module):
         # Lssim
         Lssim = 1 - self._ssim(image_in, image_out, self.window, self.window_size, self.channel, self.size_average)
         return Lp + Lssim * weight, Lp, Lssim * weight
+    
+class Ralloss(nn.Module):
+    def __init__(self, gamma_neg=4, gamma_pos=0, clip=0.05, eps=1e-8, lamb=1.5, epsilon_neg=0.0, epsilon_pos=1.0, epsilon_pos_pow=-2.5, disable_torch_grad_focal_loss=False):
+        super(Ralloss, self).__init__()
+
+        self.gamma_neg = gamma_neg
+        self.gamma_pos = gamma_pos
+        self.clip = clip
+        self.disable_torch_grad_focal_loss = disable_torch_grad_focal_loss
+        self.eps = eps
+
+        # parameters of Taylor expansion polynomials
+        self.epsilon_pos = epsilon_pos
+        self.epsilon_neg = epsilon_neg
+        self.epsilon_pos_pow = epsilon_pos_pow
+        self.margin = 1.0
+        self.lamb = lamb
+
+    def forward(self, x, y):
+        """"
+        x: input logits with size (batch_size, number of labels).
+        y: binarized multi-label targets with size (batch_size, number of labels).
+        """
+        # Calculating Probabilities
+        x_sigmoid = torch.sigmoid(x)
+        xs_pos = x_sigmoid
+        xs_neg = 1 - x_sigmoid
+
+        # Asymmetric Clipping
+        if self.clip is not None and self.clip > 0:
+            xs_neg = (xs_neg + self.clip).clamp(max=1)
+
+        # Basic Taylor expansion polynomials
+        los_pos = y * (torch.log(xs_pos.clamp(min=self.eps)) + self.epsilon_pos * (1 - xs_pos.clamp(min=self.eps)) + self.epsilon_pos_pow * 0.5 * torch.pow(1 - xs_pos.clamp(min=self.eps), 2))
+        los_neg = (1 - y) * (torch.log(xs_neg.clamp(min=self.eps)) + self.epsilon_neg * (xs_neg.clamp(min=self.eps)) ) * (self.lamb - x_sigmoid) * x_sigmoid ** 2 * (self.lamb - xs_neg)
+        loss = los_pos + los_neg
+
+        # Asymmetric Focusing
+        if self.gamma_neg > 0 or self.gamma_pos > 0:
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(False)
+            pt0 = xs_pos * y
+            pt1 = xs_neg * (1 - y)  # pt = p if t > 0 else 1-p
+            pt = pt0 + pt1
+            one_sided_gamma = self.gamma_pos * y + self.gamma_neg * (1 - y)
+            one_sided_w = torch.pow(1 - pt, one_sided_gamma)
+            if self.disable_torch_grad_focal_loss:
+                torch.set_grad_enabled(True)
+            loss *= one_sided_w
+
+        return -loss.sum()
