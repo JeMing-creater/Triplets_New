@@ -56,7 +56,7 @@ class CholecT45():
             'contrast': transforms.ColorJitter(brightness=0.1, contrast=0.2, saturation=0, hue=0),
             'rot90': transforms.RandomRotation(90, expand=True),
             'brightness': transforms.RandomAdjustSharpness(sharpness_factor=1.6, p=0.5),
-            'contrast': transforms.RandomAutocontrast(p=0.5),
+            'ccontrast': transforms.RandomAutocontrast(p=0.5),
         }
         self.augmentation_list = []
         for aug in augmentation_list:
@@ -74,18 +74,12 @@ class CholecT45():
 
     def split_selector(self, case='cholect50'):
         switcher = {
-            'cholect50': {
-                'train': [1, 15, 26, 40, 52, 65, 79, 2, 18, 27, 43, 56, 66, 92, 4, 22, 31, 47, 57, 68, 96, 5, 23, 35,
-                          48, 60, 70, 103, 13, 25, 36, 49, 62, 75, 110],
+            'cholect45': {
+                'train': [79, 2, 25, 66, 23,  5, 15, 40, 47, 26, 48, 70,31, 57, 36, 18, 52, 68, 60, 27, 65, 75, 22, 49, 43, 62, 35, 1, 56, 4, 13,],
                 'val': [8, 12, 29, 50, 78],
-                'test': [6, 51, 10, 73, 14, 74, 32, 80, 42, 111]
+                'test': [6, 51, 10, 73, 14, 74, 32, 80, 42]
             },
-            'cholect50-challenge': {
-                'train': [1, 15, 26, 40, 52, 79, 2, 27, 43, 56, 66, 4, 22, 31, 47, 57, 68, 23, 35, 48, 60, 70, 13, 25,
-                          49, 62, 75, 8, 12, 29, 50, 78, 6, 51, 10, 73, 14, 32, 80, 42],
-                'val': [5, 18, 36, 65, 74],
-                'test': [92, 96, 103, 110, 111]
-            },
+            
             'cholect45-crossval': {
                 1: [79, 2, 51, 6, 25, 14, 66, 23, 50, ],
                 2: [80, 32, 5, 15, 40, 47, 26, 48, 70, ],
@@ -93,13 +87,7 @@ class CholecT45():
                 4: [42, 29, 60, 27, 65, 75, 22, 49, 12, ],
                 5: [78, 43, 62, 35, 74, 1, 56, 4, 13, ],
             },
-            'cholect50-crossval': {
-                1: [79, 2, 51, 6, 25, 14, 66, 23, 50, 111],
-                2: [80, 32, 5, 15, 40, 47, 26, 48, 70, 96],
-                3: [31, 57, 36, 18, 52, 68, 10, 8, 73, 103],
-                4: [42, 29, 60, 27, 65, 75, 22, 49, 12, 110],
-                5: [78, 43, 62, 35, 74, 1, 56, 4, 13, 92],
-            },
+            
         }
         return switcher.get(case)
 
@@ -240,7 +228,7 @@ class CholecT50():
             'contrast': transforms.ColorJitter(brightness=0.1, contrast=0.2, saturation=0, hue=0),
             'rot90': transforms.RandomRotation(90,expand=True),
             'brightness': transforms.RandomAdjustSharpness(sharpness_factor=1.6, p=0.5),
-            'contrast': transforms.RandomAutocontrast(p=0.5),
+            'ccontrast': transforms.RandomAutocontrast(p=0.5),
         }
         self.m = m
         self.augmentation_list = []

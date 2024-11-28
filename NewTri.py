@@ -92,8 +92,8 @@ def get_pre_loss(cls, fm, out_image, mask_feature, mfm, mcls, img, accelerator, 
     bc = 0.005
     ar_loss = mse_loss(out_image, img)
     sr_loss = mse_loss(mask_feature, fm)
-    hcl_loss  = contrastive_loss(fm, mfm, temperature=0.2)
-    lcl_loss = contrastive_loss(cls, mcls, temperature=0.2)
+    hcl_loss  = contrastive_loss(fm, mfm, temperature=0.5)
+    lcl_loss = contrastive_loss(cls, mcls, temperature=0.5)
     
     drc_loss = ar * ar_loss + (1-ar) * sr_loss
     hlcl = ac * hcl_loss + bc * lcl_loss
@@ -171,7 +171,7 @@ def train_one_epoch(config, model, momentummodel, ema, train_loader, optimizer, 
         pre_loss   = get_pre_loss(cls, fm, out_image, mask_feature, mfm, mcls, img, accelerator, step)
         class_loss = get_class_loss(config, cls, (y1, y2, y3, y4), accelerator, step)
         
-        loss = 0.05 * pre_loss +  1* class_loss
+        loss = config.trainer.pre_radio * pre_loss +  1 * class_loss
         accelerator.backward(loss)
         
         for name, param in model.named_parameters():
@@ -186,7 +186,7 @@ def train_one_epoch(config, model, momentummodel, ema, train_loader, optimizer, 
         
         step += 1
         accelerator.print(
-                f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Training Losses => total:[{loss.item():.4f}] pre: [{pre_loss.item():.4f}]  class: [{class_loss.item():.4f}]', flush=True)
+                f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Best [{best_score}] Training Losses => total:[{loss.item():.4f}] pre: [{pre_loss.item():.4f}]  class: [{class_loss.item():.4f}]', flush=True)
     
     scheduler.step()
     
@@ -227,7 +227,7 @@ if __name__ == '__main__':
     activation = nn.Sigmoid()
     
     # model
-    model         = TripletModel(model_name='swin_base_patch4_window7_224')
+    model         = TripletModel(model_name='swin_base_patch4_window7_224', mask_prob = 0.3)
     momentummodel = TripletModel(model_name='swin_base_patch4_window7_224')
     
     # load dataset
@@ -252,13 +252,7 @@ if __name__ == '__main__':
     tool_weight, verb_weight, target_weight = get_weight_balancing(config)
     alpha_instrument, alpha_verb, alpha_target = get_focal_weight_balancing(config)
     
-    # training setting
-    train_step = 0
-    val_step = 0
-    start_num_epochs = 0
-    best_score = torch.nn.Parameter(torch.tensor([0.0]), requires_grad=False)
-    best_metrics = {}
-    
+
     # resume
     if config.trainer.resume.train:
         model, optimizer, scheduler, start_num_epochs, train_step, val_step, best_score, best_metrics = resume_train_state(model, config.finetune.checkpoint + config.trainer.dataset, optimizer, scheduler, accelerator)

@@ -3,8 +3,9 @@ trainer:
   is_train: True
   warmup: 2
   word_radio: 1.5  # 1.5==>37
+  pre_radio: 0.05
   pre_epochs: 5
-  num_epochs: 30
+  num_epochs: 20
   fuss_epochs: 150
   step2_epochs: 20
   ddpm_num_steps: 1000
@@ -23,7 +24,7 @@ trainer:
   # weight_decay: 0.05
   weight_decay: 1e-6
   weight_decay_end: 0.04
-  val_training: False
+  val_training: True
   resume: 
     train: True
     test: False
@@ -32,30 +33,31 @@ trainer:
 finetune:
   # checkpoint: MambaOnly
   # checkpoint: MuData
-  checkpoint: CLIP2
-  # checkpoint: SR
+  # checkpoint: CLIP2
+  checkpoint: SR
   
 
 dataset:
   T45:
-    batch_size: 24
+    batch_size: 20
     class_num: 100
     num_workers: 4
-    kfold: 1
+    kfold: 5
     threshold: 150
     image_size: [224,224]
     data_dir: '/root/.cache/huggingface/forget/datasets/CholecT45/'
     text_path: '/workspace/Jeming/Triple_git/src/text-data/'  # change to adapt your path
     dataset_variant: 'cholect45-crossval'
+    # dataset_variant: 'cholect45'
     pin_memory: True
     persistent_workers: True
     drop_last: False
     weight_randa: True
-    #data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    # data_augmentations: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
     data_augmentations: ['original']
-    data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
+    data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90', 'ccontrast']
   T50:
-    batch_size: 32
+    batch_size: 6
     class_num: 100
     num_workers: 4
     kfold: 1
@@ -65,9 +67,9 @@ dataset:
     text_path: '/workspace/Jeming/Triple_git/src/text-data/'   # change to adapt your path
     m: 3
     weight_randa: False
-    # data_augmentations: ['rot90', 'hflip', 'contrast', 'original']
-    data_augmentations: ['original']
+    data_augmentations: ['rot90', 'hflip', 'contrast', 'original']
+    # data_augmentations: ['original']
     data_augmentations_s: ['original', 'vflip', 'hflip', 'contrast', 'rot90']
-    dataset_variant: 'cholect45-crossval'
+    dataset_variant: 'cholect50-crossval'
   
     
