@@ -44,7 +44,6 @@ from src.eval import Trip_C_val as val
 from src.optimizer import LinearWarmupCosineAnnealingLR, CosineAnnealingWarmRestarts
 
 # model
-from src.models.G_F import FussionModel, add_tokens_tokenizer, get_all_list, labels
 # from src.models.LViTPrediction import CholecT45
 from src.models.Swin import TripletModel
 from loss import *
@@ -214,108 +213,6 @@ class T45(Dataset):
         self.img_dir = img_dir
         self.transform = transform
         self.target_transform = target_transform
-        self.labels = [
-    'Grasper dissects cystic plate.',
-    'Grasper dissects gallbladder.',
-    'Grasper dissects omentum.',
-    'Grasper grasps cystic artery.',
-    'Grasper grasps cystic duct.',
-    'Grasper grasps cystic pedicle.',
-    'Grasper grasps cystic plate.',
-    'Grasper grasps gallbladder.',
-    'Grasper grasps gut.',
-    'Grasper grasps liver.',
-    'Grasper grasps omentum.',
-    'Grasper grasps peritoneum.',
-    'Grasper grasps specimen bag.',
-    'Grasper packs gallbladder.',
-    'Grasper retracts cystic duct.',
-    'Grasper retracts cystic pedicle.',
-    'Grasper retracts cystic plate.',
-    'Grasper retracts gallbladder.',
-    'Grasper retracts gut.',
-    'Grasper retracts liver.',
-    'Grasper retracts omentum.',
-    'Grasper retracts peritoneum.',
-    'Bipolar coagulates abdominal wall cavity.',
-    'Bipolar coagulates blood vessel.',
-    'Bipolar coagulates cystic artery.',
-    'Bipolar coagulates cystic duct.',
-    'Bipolar coagulates cystic pedicle.',
-    'Bipolar coagulates cystic plate.',
-    'Bipolar coagulates gallbladder.',
-    'Bipolar coagulates liver.',
-    'Bipolar coagulates omentum.',
-    'Bipolar coagulates peritoneum.',
-    'Bipolar dissects adhesion.',
-    'Bipolar dissects cystic artery.',
-    'Bipolar dissects cystic duct.',
-    'Bipolar dissects cystic plate.',
-    'Bipolar dissects gallbladder.',
-    'Bipolar dissects omentum.',
-    'Bipolar grasps cystic plate.',
-    'Bipolar grasps liver.',
-    'Bipolar grasps specimen bag.',
-    'Bipolar retracts cystic duct.',
-    'Bipolar retracts cystic pedicle.',
-    'Bipolar retracts gallbladder.',
-    'Bipolar retracts liver.',
-    'Bipolar retracts omentum.',
-    'Hook coagulates blood vessel.',
-    'Hook coagulates cystic artery.',
-    'Hook coagulates cystic duct.',
-    'Hook coagulates cystic pedicle.',
-    'Hook coagulates cystic plate.',
-    'Hook coagulates gallbladder.',
-    'Hook coagulates liver.',
-    'Hook coagulates omentum.',
-    'Hook cuts blood vessel.',
-    'Hook cuts peritoneum.',
-    'Hook dissects blood vessel.',
-    'Hook dissects cystic artery.',
-    'Hook dissects cystic duct.',
-    'Hook dissects cystic plate.',
-    'Hook dissects gallbladder.',
-    'Hook dissects omentum.',
-    'Hook dissects peritoneum.',
-    'Hook retracts gallbladder.',
-    'Hook retracts liver.',
-    'Scissors coagulate omentum.',
-    'Scissors cut adhesion.',
-    'Scissors cut blood vessel.',
-    'Scissors cut cystic artery.',
-    'Scissors cut cystic duct.',
-    'Scissors cut cystic plate.',
-    'Scissors cut liver.',
-    'Scissors cut omentum.',
-    'Scissors cut peritoneum.',
-    'Scissors dissect cystic plate.',
-    'Scissors dissect gallbladder.',
-    'Scissors dissect omentum.',
-    'Clipper clips blood vessel.',
-    'Clipper clips cystic artery.',
-    'Clipper clips cystic duct.',
-    'Clipper clips cystic pedicle.',
-    'Clipper clips cystic plate.',
-    'Irrigator aspirates fluid.',
-    'Irrigator dissects cystic duct.',
-    'Irrigator dissects cystic pedicle.',
-    'Irrigator dissects cystic plate.',
-    'Irrigator dissects gallbladder.',
-    'Irrigator dissects omentum.',
-    'Irrigator irrigates abdominal wall cavity.',
-    'Irrigator irrigates cystic pedicle.',
-    'Irrigator irrigates liver.',
-    'Irrigator retracts gallbladder.',
-    'Irrigator retracts liver.',
-    'Irrigator retracts omentum.',
-    'Only grasper.',
-    'Only bipolar.',
-    'Only hook.',
-    'Only scissors.',
-    'Only clipper.',
-    'Only irrigator.'
-]
         
     def load_text_by_index(self, file_path):
         data = {}
@@ -455,7 +352,7 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizer, sche
             'Train/focal_loss_t': float(focal_loss_t.item()),
             'Train/loss_ivt': float(loss_ivt.item()),
         }, step=step)
-        accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Losses => total:[{loss.item():.4f}] ce: [{0.1 * loss_ce.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f},{focal_loss_i.item():.4f}] v: [{loss_v.item():.4f},{focal_loss_v.item():.4f}] t: [{loss_t.item():.4f},{focal_loss_t.item():.4f}]', flush=True)    
+        accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Best: [{best_score}] Losses => total:[{loss.item():.4f}] ce: [{0.1 * loss_ce.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f},{focal_loss_i.item():.4f}] v: [{loss_v.item():.4f},{focal_loss_v.item():.4f}] t: [{loss_t.item():.4f},{focal_loss_t.item():.4f}]', flush=True)    
 
         
         # lose backward
@@ -515,9 +412,9 @@ if __name__ == '__main__':
     dataset = CholecT45( 
                 tokenizer, processor, context_length=150,       
                 dataset_dir='/root/.cache/huggingface/forget/datasets/CholecT45/', 
-                dataset_variant='cholect45-crossval',
-                test_fold=1,
-                augmentation_list=['original', 'vflip', 'hflip', 'contrast', 'rot90'],
+                dataset_variant=config.dataset.T45.dataset_variant,
+                test_fold=config.dataset.T45.kfold,
+                augmentation_list=config.dataset.T45.data_augmentations,
                 )
     
     train_dataset, val_dataset, test_dataset = dataset.build()

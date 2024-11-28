@@ -44,7 +44,7 @@ from loss import *
 from src.models.rendezvous import Rendezvous
 # from src.models.MambaOnly import TriBase
 # from src.models.MO import TriBase
-from src.models.MO import TriBase
+# from src.models.MO import TriBase
 from src.models.RIT import RiT
 from src.models.Swin import TripletModel
 # from src.models.Mutmodel import TripletModel, CholecT45
@@ -108,7 +108,8 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizer, sche
         }, step=step)
         step += 1
         accelerator.print(
-                f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Training Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}]  i: [{loss_i.item():.4f}, {focal_loss_i.item():.4f}] v: [{loss_v.item():.4f}, {focal_loss_v.item():.4f}] t: [{loss_t.item():.4f}, {focal_loss_t.item():.4f}]', flush=True)
+                f'Epoch [{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Best [{best_score}] Training Losses => total:[{loss.item():.4f}] ivt: [{loss_ivt.item():.4f}]  i: [{loss_i.item():.4f}, {focal_loss_i.item():.4f}] v: [{loss_v.item():.4f}, {focal_loss_v.item():.4f}] t: [{loss_t.item():.4f}, {focal_loss_t.item():.4f}]', flush=True)
+        # break
     # learning rate schedule update
     scheduler.step()
     
@@ -145,26 +146,26 @@ if __name__ == '__main__':
     activation = nn.Sigmoid()
     
     # model
-    # model = TripletModel(model_name='swin_base_patch4_window7_224')
-    model = TriBase()
+    model = TripletModel(model_name='swin_base_patch4_window7_224')
+    # model = TriBase()
     
     
     # load dataset
     train_loader, val_loader, test_loader = give_dataset(config)
     
     # training tools
-    # optimizer = Adam(
-    #         model.parameters(),
-    #         lr=float(config.trainer.Tlr[0]),
-    #         weight_decay=float(config.trainer.weight_decay),
-    #         amsgrad=False,
-    # )
     optimizer = Adam(
             model.parameters(),
-            lr=0.001,
+            lr=float(config.trainer.Tlr[0]),
             weight_decay=float(config.trainer.weight_decay),
             amsgrad=False,
     )
+    # optimizer = Adam(
+    #         model.parameters(),
+    #         lr=0.001,
+    #         weight_decay=float(config.trainer.weight_decay),
+    #         amsgrad=False,
+    # )
     scheduler = CosineAnnealingWarmRestarts(
             optimizer,
             T_0=(config.trainer.num_epochs +1),

@@ -289,7 +289,7 @@ def Trip_M_val(config, model, dataloader, activation, step=0, train=False):
             b, m, c, h, w = img.size()
             img = img.view(-1, c, h, w)
         # _, _, _, triplet = model(img)
-        output, fm, out_image, mask_feature = model(img)
+        output, _, _, _ = model(img)
         
         triplet = output[:, :100]
         # triplet = output[:, :100]
