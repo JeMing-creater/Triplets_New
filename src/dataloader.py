@@ -454,33 +454,6 @@ def give_dataset(config):
                             prefetch_factor=4*config.batch_size, 
                             persistent_workers=True
                         )  
-        # val_dataloader = []
-        # records = dataset.val_records
-        # for i, video_ds in enumerate(val_dataset):
-        #     loader = DataLoader(
-        #                     video_ds, 
-        #                     batch_size=config.batch_size, 
-        #                     num_workers=config.num_workers, 
-        #                     shuffle=False, 
-        #                     pin_memory=True, 
-        #                     prefetch_factor=4*config.batch_size, 
-        #                     persistent_workers=True
-        #                 )
-        #     val_dataloader.append((records[i], loader))
-        
-        # test_dataloader = []
-        # records = dataset.test_records
-        # for i, video_ds in enumerate(test_dataset):
-        #     loader = DataLoader(
-        #                     video_ds, 
-        #                     batch_size=config.batch_size, 
-        #                     num_workers=config.num_workers, 
-        #                     shuffle=False, 
-        #                     pin_memory=True, 
-        #                     prefetch_factor=4*config.batch_size, 
-        #                     persistent_workers=True
-        #                 )
-        #     test_dataloader.append((records[i], loader))
         return train_dataloader, val_dataloader, test_dataloader
     
 if __name__ == '__main__':

@@ -26,7 +26,7 @@ from datetime import datetime
 from accelerate import Accelerator
 from timm.optim import optim_factory
 from monai.utils import ensure_tuple_rep
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 import numpy as np
 import json
 import torchvision.transforms as T
@@ -36,7 +36,7 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from open_clip import create_model_from_pretrained, get_tokenizer
 # src
 # from src.dataloader_s import give_dataset
-from src.dataloader import give_dataset
+# from src.dataloader import give_dataset
 from src.optimizer import give_scheduler
 from torch.utils.data import Dataset, DataLoader
 from src.utils import same_seeds, corrupt, _extract_into_tensor, freeze, unfreeze, Logger, get_focal_weight_balancing, get_weight_balancing, set_param_in_device, step_params, load_pretrain_model, FocalLoss
@@ -522,39 +522,6 @@ class T50(Dataset):
         # return np.stack(images, axis=0), (labels[0], labels[1], labels[2], labels[3])
         return images, text, (labels[0], labels[1], labels[2], labels[3])
 
-
-# class CLIPclass(nn.Module):
-#     def __init__(self, class_num=131):
-#         super().__init__()
-#         # self.model, _ = clip.load("ViT-B/32", device=accelerator.device)
-#         # self.model, _ = create_model_from_pretrained('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
-#         # self.model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
-#         self.model = MedCLIPModel(vision_cls=MedCLIPVisionModelViT)
-#         self.model.from_pretrained()
-#         # self.vision_model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14-336")
-#         # self.text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14-336")
-        
-#         # self.align = nn.Linear(1024, 768)
-#         # out_channel = self.model.visual_projection.out_features    
-#         self.fc = nn.Linear(512, 512)
-#         self.head = nn.Linear(512, class_num)
-    
-#     def forward(self, image_input, text_inputs = None):
-#         image_features = self.model.encode_image(image_input)
-        
-#         if self.training == True:
-#             text_features = self.model.encode_text(text_inputs)
-#             logits_per_image = self.model.compute_logits(image_features, text_features)
-#             logits_per_text = logits_per_image.t()
-#             class_result = self.fc(image_features.float())
-#             class_result = torch.relu(class_result)
-#             class_result = self.head(class_result)      
-#             return class_result, logits_per_image, logits_per_text
-#         else:
-#             class_result = self.fc(image_features.float())
-#             class_result = torch.relu(class_result)
-#             class_result = self.head(class_result)
-#             return class_result 
         
 class CLIPclass(nn.Module):
     def __init__(self, class_num=131):
@@ -571,8 +538,10 @@ class CLIPclass(nn.Module):
             text_features = self.model.encode_text(text_inputs)
             # image_feature = image_features / image_features.norm(dim=-1, keepdim=True)
             # text_feature = text_features / text_features.norm(dim=-1, keepdim=True)
-            image_feature = F.normalize(image_features, p=2, dim=1)  # [batch_size, d]
-            text_feature = F.normalize(text_features, p=2, dim=1)
+            # image_feature = F.normalize(image_features, p=2, dim=1)  # [batch_size, d]
+            # text_feature = F.normalize(text_features, p=2, dim=1)
+            image_feature = image_features / image_features.norm(dim=-1, keepdim=True)
+            text_feature = text_features / text_features.norm(dim=-1, keepdim=True)
             
             logit_scale = self.model.logit_scale.exp()
             logits_per_image = logit_scale * image_feature @ text_feature.t()
@@ -628,8 +597,13 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizer, sche
         #     loss =  loss_ce + 0.0 * ((loss_i) + (loss_v) + (loss_t) + loss_ivt + focal_loss)
         # else:
         #     accelerator.print('class training')
-        loss =  config.trainer.word_radio * loss_ce + ((loss_i) + (loss_v) + (loss_t) + loss_ivt + focal_loss)
-            
+        word_radio = config.trainer.word_radio
+        # if epoch  > config.trainer.pre_epochs:
+        #     word_radio = 0
+        # else:
+        #     word_radio = config.trainer.word_radio
+        loss =  word_radio * loss_ce + ((loss_i) + (loss_v) + (loss_t) + loss_ivt + focal_loss)
+
         accelerator.log({
             'Train/Total Class Loss': float(loss.item()),
             'Train/loss_ce': float(loss_ce.item()),
@@ -641,7 +615,7 @@ def train_one_epoch(config, model, train_loader, loss_functions, optimizer, sche
             'Train/focal_loss_t': float(focal_loss_t.item()),
             'Train/loss_ivt': float(loss_ivt.item()),
         }, step=step)
-        accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Best [{best_score}] Losses => total:[{loss.item():.4f}] ce: [{loss_ce.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f},{focal_loss_i.item():.4f}] v: [{loss_v.item():.4f},{focal_loss_v.item():.4f}] t: [{loss_t.item():.4f},{focal_loss_t.item():.4f}]', flush=True)    
+        accelerator.print(f'[{epoch+1}/{config.trainer.num_epochs}][{batch + 1}/{len(train_loader)}] Best [{best_score}] Losses => total:[{loss.item():.4f}] ce: [{word_radio * loss_ce.item():.4f}] ivt: [{loss_ivt.item():.4f}] i: [{loss_i.item():.4f},{focal_loss_i.item():.4f}] v: [{loss_v.item():.4f},{focal_loss_v.item():.4f}] t: [{loss_t.item():.4f},{focal_loss_t.item():.4f}]', flush=True)    
 
         
         # lose backward
@@ -678,6 +652,94 @@ def val_one_epoch(config, model, val_loader, loss_functions, activation, epoch, 
     accelerator.log(metrics, step=epoch)
     return ivt_score, metrics, step
 
+
+def give_dataset(config):
+    dataset_choose = config.trainer.dataset
+    _, processor = create_model_from_pretrained('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
+    tokenizer = get_tokenizer('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
+    if dataset_choose == 'T45':
+        config = config.dataset.T45
+        # dataset = CholecT45(
+        #         image_size=config.image_size,
+        #         dataset_dir=config.data_dir, 
+        #         dataset_variant=config.dataset_variant,
+        #         test_fold=config.kfold,
+        #         augmentation_list=config.data_augmentations,
+        #         )
+        dataset = CholecT45( 
+                tokenizer, processor, context_length=config.context_length,
+                dataset_dir=config.data_dir,
+                dataset_variant=config.dataset_variant,
+                test_fold=config.kfold,
+                augmentation_list=config.data_augmentations,
+                # augmentation_list=['original','vflip', 'hflip', 'rot90'],
+                )
+        train_dataset, val_dataset, test_dataset = dataset.build()
+        
+        train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, prefetch_factor=3*config.batch_size, num_workers=config.num_workers, pin_memory=config.pin_memory, persistent_workers=config.persistent_workers, drop_last=config.drop_last)
+        val_dataloader   = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False, prefetch_factor=3*config.batch_size, num_workers=config.num_workers, pin_memory=config.pin_memory, persistent_workers=config.persistent_workers, drop_last=config.drop_last)
+        
+        
+        # test data set is built per video, so load differently
+        test_dataloaders = []
+        for video_dataset in test_dataset:
+            test_dataloader = DataLoader(video_dataset, batch_size=config.batch_size, shuffle=False, prefetch_factor=3*config.batch_size, num_workers=config.num_workers, pin_memory=config.pin_memory, persistent_workers=config.persistent_workers, drop_last=config.drop_last)
+            test_dataloaders.append(test_dataloader)
+        
+        return train_dataloader, val_dataloader, test_dataloader
+    elif dataset_choose == 'T50':
+        config = config.dataset.T50
+        # dataset = CholecT50(image_size=config.image_size,
+        #                     dataset_dir=config.data_dir, 
+        #                     dataset_variant=config.dataset_variant,
+        #                     test_fold=config.kfold,
+        #                     augmentation_list=[config.data_augmentations.pop()],
+        #                     normalize=True,
+        #                     m=config.m
+        #                 )
+        dataset = CholecT50( 
+                tokenizer, processor, context_length=config.context_length,
+                dataset_dir=config.data_dir,
+                dataset_variant=config.dataset_variant,
+                test_fold=config.kfold,
+                augmentation_list=[config.data_augmentations.pop()],
+                normalize=True,
+                m=config.m
+                # augmentation_list=['original','vflip', 'hflip', 'rot90'],
+                )
+                
+        train_dataset, val_dataset, test_dataset = dataset.build()
+
+        # create dataloader for train data
+        train_dataloader = DataLoader(
+                        train_dataset, 
+                        batch_size=config.batch_size, 
+                        num_workers=config.num_workers, 
+                        shuffle=True, 
+                        pin_memory=True, 
+                        prefetch_factor=4*config.batch_size, 
+                        persistent_workers=True
+                    )
+        val_dataloader = DataLoader(
+                            val_dataset, 
+                            batch_size=config.batch_size, 
+                            num_workers=config.num_workers, 
+                            shuffle=False, 
+                            pin_memory=True, 
+                            prefetch_factor=4*config.batch_size, 
+                            persistent_workers=True
+                        )  
+        test_dataloader = DataLoader(
+                            test_dataset, 
+                            batch_size=config.batch_size, 
+                            num_workers=config.num_workers, 
+                            shuffle=False, 
+                            pin_memory=True, 
+                            prefetch_factor=4*config.batch_size, 
+                            persistent_workers=True
+                        )  
+        return train_dataloader, val_dataloader, test_dataloader
+
 if __name__ == '__main__':
     same_seeds(50)
     # log
@@ -693,30 +755,14 @@ if __name__ == '__main__':
     # model
     model = CLIPclass()
     # dataset
-    _, processor = create_model_from_pretrained('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
-    tokenizer = get_tokenizer('hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224')
-    
-    dataset = CholecT45( 
-                tokenizer, processor, context_length=150,       
-                dataset_dir='/root/.cache/huggingface/forget/datasets/CholecT45/', 
-                dataset_variant='cholect45-crossval',
-                test_fold=1,
-                augmentation_list=['original', 'vflip', 'hflip', 'contrast', 'rot90'],
-                )
-    
-    
-    train_dataset, val_dataset, test_dataset = dataset.build()
-    batch_size = config.dataset.T45.batch_size
-    num_workers = config.dataset.T45.num_workers
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, prefetch_factor=3*batch_size, num_workers=num_workers, pin_memory=True, persistent_workers=True, drop_last=False)
-    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, prefetch_factor=3*batch_size, num_workers=num_workers, pin_memory=True, persistent_workers=True, drop_last=False)
+    train_loader, val_loader, test_loader = give_dataset(config)
     
     # setting tools
     # params_to_update = [param for name, param in model.named_parameters() if 'text_model.model.pooler' not in name and param.requires_grad]
 
-    optimizer = Adam(model.parameters(), lr=0.0001,betas=(0.9,0.98),eps=1e-6,weight_decay=0.001)
-    # optimizer = Adam(params_to_update, lr=0.0001,betas=(0.9,0.98),eps=1e-6,weight_decay=0.001)
-    # optimizer = Adam(params_to_update, lr=0.0001,betas=(0.9,0.98),eps=1e-6,weight_decay=0.001)
+    optimizer = Adam(model.parameters(), lr=config.trainer.clip_lr, betas=(0.9,0.98),eps=1e-6,weight_decay=0.001)
+    # optimizer = Adam(params_to_update, lr=0.0001, betas=(0.9,0.98),eps=1e-6,weight_decay=0.001)
+    # optimizer = Adam(params_to_update, lr=0.0001, betas=(0.9,0.98),eps=1e-6,weight_decay=0.001)
 
     scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
     
@@ -771,6 +817,13 @@ if __name__ == '__main__':
         torch.save({'epoch': epoch, 'best_score': best_score, 'best_metrics': best_metrics, 'train_step': train_step, 'val_step': val_step},
                     f'{os.getcwd()}/model_store/{config.finetune.checkpoint + config.trainer.dataset}/checkpoint/epoch.pth.tar')
         accelerator.print('Checkout Over!')
-    
+    # for batch, (images, texts, (_, _, _, y4)) in enumerate(train_loader):
+    #     # inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
+    #     # outputs = model(**inputs)
+    #     print(images.shape)
+    #     # print(image.shape)
+    #     logits_per_image, logits_per_text = model(images, texts)
+    #     # logits = outputs.logits_per_image.squeeze(1)
+    #     # cr(logits, y4)
         
     

@@ -12,6 +12,7 @@ import numpy as np
 import torch.nn as nn
 from PIL import Image
 import timm
+import yaml
 import math
 import numbers
 import torchvision.transforms as transforms
@@ -22,7 +23,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from open_clip import create_model_from_pretrained, get_tokenizer, create_model_and_transforms
 from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2Tokenizer, GPT2Model
-
+from easydict import EasyDict
 
 
 # 初始化模型和分词器
@@ -129,7 +130,7 @@ labels = [
     'Only irrigator.'
 ]
 
-class GenerateWord():
+class T45GenerateWord():
     def __init__(self,dataset_dir, save_path = 'words'):
         self.labels = [
             'Grasper dissects cystic plate.',
@@ -625,11 +626,13 @@ class T50GenerateWord():
 
 if __name__ == '__main__':
     device = 'cuda:3'
-    
-    # TODO: caption generation
-    # g = GenerateWord(dataset_dir='/root/.cache/huggingface/forget/datasets/CholecT45/')
-    # folder_all = g.generate_word_save()
-    
-    g = T50GenerateWord(dataset_dir='/root/.cache/huggingface/forget/datasets/CholecT50/')
-    folder_all = g.generate_word_save()
+    config = EasyDict(yaml.load(open('config.yml', 'r', encoding="utf-8"), Loader=yaml.FullLoader))
+
+    if config.trainer.dataset == 'T45':
+        # TODO: caption generation
+        g = T45GenerateWord(dataset_dir=config.dataset.T45.data_dir)
+        folder_all = g.generate_word_save()
+    else:
+        g = T50GenerateWord(dataset_dir=config.dataset.T50.data_dir)
+        folder_all = g.generate_word_save()
     
